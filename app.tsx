@@ -321,6 +321,7 @@ function BoardPage() {
             persistSearch("");
           }}
           anyFilterActive={anyFilterActive}
+          onNewThread={() => actions.openNewThread({ focusPrompt: true })}
         />
         {searched.length === 0 ? (
           <div className="p-4">

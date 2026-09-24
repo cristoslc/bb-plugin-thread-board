@@ -266,6 +266,7 @@ interface BoardToolbarProps {
   totalCount: number;
   onClearFilters: () => void;
   anyFilterActive: boolean;
+  onNewThread: () => void;
 }
 
 const STATE_OPTIONS: readonly { value: ThreadState; label: string }[] = [
@@ -290,6 +291,7 @@ export function BoardToolbar({
   totalCount,
   onClearFilters,
   anyFilterActive,
+  onNewThread,
 }: BoardToolbarProps) {
   const groupOptions = GROUP_BY_OPTIONS.map((option) => ({
     value: option.value,
@@ -398,6 +400,14 @@ export function BoardToolbar({
           Clear
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={onNewThread}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Icon name="Plus" className="size-3.5" aria-hidden />
+        New thread
+      </button>
       <span className="text-xs text-muted-foreground">{totalCount} threads</span>
     </div>
   );
