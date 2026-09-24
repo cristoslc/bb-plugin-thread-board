@@ -3,7 +3,12 @@ import { ThreadChat } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+
+// Shared header-button classes: a 28px ghost icon button that grows to a
+// 36px touch target on coarse pointers (phones), matching bb's own headers.
+const HEADER_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 text-muted-foreground hover:text-foreground`;
 
 const PANE_WIDTH_KEY = "thread-board:paneWidth";
 const PANE_MIN_WIDTH = 320;
@@ -129,7 +134,7 @@ function ActionsMenu({ items }: { items: readonly ActionMenuItem[] }) {
       <Button
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+        className={HEADER_ICON_BUTTON_CLASS}
         aria-label="More thread actions"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -258,9 +263,11 @@ export function ThreadPane({
       aria-label={`Thread: ${thread.displayTitle}`}
       className={
         isCompact
-          ? // Compact viewport: the pane covers the board, so it floats as a
-            // full-screen sheet with a grab-handle close affordance.
-            "fixed inset-0 z-30 flex min-h-0 flex-col bg-background"
+          ? // Compact viewport: the pane covers the board as a full-screen
+            // sheet with the X close button in the header. As a fixed element
+            // it escapes the host panel's own safe-area padding, so it pads
+            // for the home indicator / notch itself.
+            "fixed inset-0 z-30 flex min-h-0 flex-col bg-background pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]"
           : "relative flex h-full min-h-0 flex-col border-l border-border bg-background shadow-lg"
       }
       style={isCompact ? undefined : { width }}
@@ -277,7 +284,7 @@ export function ThreadPane({
       <header
         className={
           isCompact
-            ? "flex items-center gap-2 border-b border-border px-2 pb-2 pt-3"
+            ? "flex items-center gap-2 border-b border-border px-2 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]"
             : "flex items-center gap-2 border-b border-border px-3 py-2"
         }
       >
@@ -285,7 +292,7 @@ export function ThreadPane({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0 text-foreground"
+            className="size-8 shrink-0 text-foreground max-md:pointer-coarse:size-9"
             aria-label="Back to board"
             onClick={onClose}
           >
@@ -301,12 +308,12 @@ export function ThreadPane({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className={isCompact ? HEADER_ICON_BUTTON_CLASS : "h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"}
           aria-label={thread.isUnread ? "Mark thread read" : "Mark thread unread"}
           onClick={onToggleUnread}
         >
           <Icon name={thread.isUnread ? "MailOpen" : "Mail"} className="size-3.5" aria-hidden />
-          {thread.isUnread ? "Mark Read" : "Mark Unread"}
+          {!isCompact ? (thread.isUnread ? "Mark Read" : "Mark Unread") : null}
         </Button>
         {(() => {
           const actionItems: ActionMenuItem[] = [
@@ -336,17 +343,15 @@ export function ThreadPane({
             <Icon name="Maximize2" className="size-4" />
           </Button>
         ) : null}
-        {!isCompact ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label="Close thread pane"
-            onClick={onClose}
-          >
-            <Icon name="X" className="size-4" />
-          </Button>
-        ) : null}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label="Close thread pane"
+          onClick={onClose}
+        >
+          <Icon name="X" className="size-4" />
+        </Button>
       </header>
       <div className="min-h-0 flex-1">
         <ThreadChat threadId={thread.id} variant="compact" layout="contained" />
