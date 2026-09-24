@@ -40,6 +40,7 @@ interface ThreadPaneProps {
   onToggleDone: (done: boolean) => void;
   onToggleArchived: () => void;
   onToggleUnread: () => void;
+  onRename: (title: string) => Promise<void>;
   onMaximize: () => void;
   onClose: () => void;
 }
@@ -49,6 +50,76 @@ interface ActionMenuItem {
   label: string;
   icon: string;
   run: () => void;
+}
+
+function EditableTitle({
+  title,
+  onRename,
+}: {
+  title: string;
+  onRename: (title: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = useCallback(() => {
+    const trimmed = draft.trim();
+    if (trimmed !== "" && trimmed !== title) {
+      void onRename(trimmed).catch(() => {});
+    }
+    setEditing(false);
+  }, [draft, title, onRename]);
+
+  const cancel = useCallback(() => {
+    setDraft(title);
+    setEditing(false);
+  }, [title]);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm text-left hover:bg-accent"
+        title="Rename thread"
+        onClick={(event) => {
+          event.stopPropagation();
+          setDraft(title);
+          setEditing(true);
+        }}
+      >
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
+      </button>
+    );
+  }
+  return (
+    <input
+      ref={inputRef}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          commit();
+        } else if (event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          cancel();
+        }
+      }}
+      className="min-w-0 flex-1 rounded-sm border border-border bg-background px-1.5 py-0.5 text-sm font-medium outline-none focus:ring-1 focus:ring-ring"
+      aria-label="Thread title"
+    />
+  );
 }
 
 function ActionsMenu({ items }: { items: readonly ActionMenuItem[] }) {
@@ -107,6 +178,7 @@ export function ThreadPane({
   onToggleDone,
   onToggleArchived,
   onToggleUnread,
+  onRename,
   onMaximize,
   onClose,
 }: ThreadPaneProps) {
@@ -163,6 +235,15 @@ export function ThreadPane({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) {
+        // Inline editors (rename) consume Escape to cancel the edit; let them.
+        const target = event.target;
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement
+        ) {
+          return;
+        }
         event.preventDefault();
         onClose();
       }
@@ -216,9 +297,7 @@ export function ThreadPane({
           className="size-3.5 shrink-0 text-muted-foreground"
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {thread.displayTitle}
-        </span>
+        <EditableTitle title={thread.displayTitle} onRename={onRename} />
         <Button
           variant="ghost"
           size="sm"

@@ -446,6 +446,7 @@ function BoardPage() {
             if (openThreadId === null || openThreadActive === null) return;
             void actions.setRead(openThreadId, openThreadActive.isUnread);
           }}
+          onRename={(title) => actions.rename(openThread.id, title)}
           onMaximize={() => navigate.toThread(openThread.id)}
           onClose={closeThreadPane}
         />
