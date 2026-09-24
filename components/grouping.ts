@@ -1,0 +1,247 @@
+import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+
+export type GroupBy =
+  | "none"
+  | "status"
+  | "recency"
+  | "project"
+  | "provider"
+  | "section"
+  | "environment";
+
+export const GROUP_BY_OPTIONS: readonly { value: GroupBy; label: string }[] = [
+  { value: "status", label: "State" },
+  { value: "recency", label: "Last activity" },
+  { value: "project", label: "Project" },
+  { value: "provider", label: "Provider" },
+  { value: "section", label: "Section" },
+  { value: "environment", label: "Environment" },
+  { value: "none", label: "None" },
+];
+
+export type ThreadState = "working" | "attention" | "unread" | "idle";
+
+export type FilterState = {
+  /** Empty set means all projects; a non-empty set restricts to those ids. */
+  projects: ReadonlySet<string>;
+  /** Empty set means all providers; a non-empty set restricts to those ids. */
+  providers: ReadonlySet<string>;
+  /** Empty set means all states; a non-empty set restricts to those states. */
+  states: ReadonlySet<ThreadState>;
+};
+
+export interface BoardColumn {
+  id: string;
+  label: string;
+  threads: PluginSidebarThread[];
+}
+
+export interface GroupingContext {
+  projects: readonly PluginSidebarProject[];
+  sections: readonly { id: string; name: string }[];
+  providers: readonly { id: string; displayName?: string }[];
+}
+
+export function threadState(thread: PluginSidebarThread): ThreadState {
+  if (
+    thread.status === "active" ||
+    thread.status === "starting" ||
+    thread.status === "stopping" ||
+    thread.status === "pending"
+  ) {
+    return "working";
+  }
+  if (thread.hasPendingInteraction || thread.indicator === "unread-error") {
+    return "attention";
+  }
+  if (thread.isUnread) {
+    return "unread";
+  }
+  return "idle";
+}
+
+export const THREAD_STATE_LABELS: Record<ThreadState, string> = {
+  working: "Working",
+  attention: "Needs you",
+  unread: "Unread",
+  idle: "Idle",
+};
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+// Kepler-style age buckets for idle threads (State grouping) and for all
+// threads (Last activity grouping). Ordered oldest-first for lookup; columns
+// render in the reverse direction.
+const AGE_BUCKETS: { id: string; label: string; minAge: number; maxAge: number }[] = [
+  { id: "awhile", label: "A while ago", minAge: 7 * DAY, maxAge: Number.POSITIVE_INFINITY },
+  { id: "earlier", label: "Earlier", minAge: DAY, maxAge: 7 * DAY },
+  { id: "today", label: "Today", minAge: HOUR, maxAge: DAY },
+  { id: "recent", label: "Recent", minAge: 0, maxAge: HOUR },
+];
+
+const IDLE_BUCKETS = AGE_BUCKETS.map((bucket) => ({
+  ...bucket,
+  id: `idle-${bucket.id}`,
+  label: `Idle · ${bucket.label}`,
+}));
+
+function ageBucketFor(
+  age: number,
+  buckets: typeof AGE_BUCKETS,
+): { id: string; label: string } {
+  const match = buckets.find((candidate) => age >= candidate.minAge && age < candidate.maxAge);
+  return match ?? buckets[buckets.length - 1];
+}
+
+export function matchesFilter(thread: PluginSidebarThread, query: string): boolean {
+  const q = query.toLowerCase();
+  return (
+    thread.displayTitle.toLowerCase().includes(q) ||
+    thread.id.toLowerCase().includes(q)
+  );
+}
+
+export function filterThreads(
+  threads: readonly PluginSidebarThread[],
+  filter: FilterState,
+): PluginSidebarThread[] {
+  return threads.filter((thread) => {
+    if (filter.projects.size > 0 && !filter.projects.has(thread.projectId)) return false;
+    if (filter.providers.size > 0 && !filter.providers.has(thread.providerId)) return false;
+    if (filter.states.size > 0 && !filter.states.has(threadState(thread))) return false;
+    return true;
+  });
+}
+
+function sorted(threads: readonly PluginSidebarThread[]): PluginSidebarThread[] {
+  return [...threads].sort((a, b) => {
+    const aPinned = a.isPinned ? 0 : 1;
+    const bPinned = b.isPinned ? 0 : 1;
+    if (aPinned !== bPinned) return aPinned - bPinned;
+    return b.updatedAt - a.updatedAt;
+  });
+}
+
+/**
+ * Which column a thread naturally belongs to under the current grouping.
+ * Single source of truth: buildColumns groups by it, and a selected thread's
+ * column is frozen by remembering this value when it was selected.
+ */
+export function columnFor(
+  thread: PluginSidebarThread,
+  groupBy: GroupBy,
+  context: GroupingContext,
+  now: number = Date.now(),
+): { id: string; label: string } {
+  if (groupBy === "none") return { id: "all", label: "Threads" };
+  if (groupBy === "status") {
+    const state = threadState(thread);
+    if (state !== "idle") return { id: state, label: THREAD_STATE_LABELS[state] };
+    const age = now - thread.updatedAt;
+    return ageBucketFor(age, IDLE_BUCKETS);
+  }
+  if (groupBy === "recency") {
+    const age = now - thread.updatedAt;
+    return ageBucketFor(age, AGE_BUCKETS);
+  }
+  let key: string;
+  if (groupBy === "project") key = thread.projectId;
+  else if (groupBy === "provider") key = thread.providerId;
+  else if (groupBy === "section") key = thread.sectionId ?? "";
+  else key = thread.environment?.id ?? "";
+  const label = labelFor(groupBy, key, context);
+  return { id: key === "" ? "none" : key, label };
+}
+
+function labelFor(groupBy: GroupBy, key: string, context: GroupingContext): string {
+  if (groupBy === "project") {
+    return context.projects.find((project) => project.id === key)?.name ?? "Unknown project";
+  }
+  if (groupBy === "provider") {
+    return context.providers.find((entry) => entry.id === key)?.displayName ?? key;
+  }
+  if (groupBy === "section") {
+    if (key === "") return "No section";
+    return context.sections.find((section) => section.id === key)?.name ?? "Unknown section";
+  }
+  return key === "" ? "No environment" : "Environment";
+}
+
+/** Column display order: fixed lanes first (where applicable), then others. */
+function columnSortKey(groupBy: GroupBy, columnId: string): number {
+  const fixedOrder =
+    groupBy === "status"
+      ? ["working", "attention", "unread"]
+      : groupBy === "recency"
+        ? ["recent", "today", "earlier", "awhile"]
+        : groupBy === "none"
+          ? ["all"]
+          : [];
+  const index = fixedOrder.indexOf(columnId);
+  return index === -1 ? fixedOrder.length : index;
+}
+
+export function buildColumns(
+  threads: readonly PluginSidebarThread[],
+  groupBy: GroupBy,
+  context: GroupingContext,
+  frozenColumns: ReadonlyMap<string, { id: string; label: string }> = new Map(),
+  doneIds: ReadonlySet<string> = new Set(),
+  now: number = Date.now(),
+): BoardColumn[] {
+  // Threads marked Done form their own column, always farthest right on the
+  // State board and present (dimmed) on every other grouping.
+  const active = threads.filter((thread) => !doneIds.has(thread.id));
+  const done = threads.filter((thread) => doneIds.has(thread.id));
+
+  // Pinned threads (bb's own pin state) lead every board in a far-left
+  // column, exactly as they lead bb's own sidebar list.
+  const unpinned = active.filter((thread) => !thread.isPinned);
+  const pinned = active.filter((thread) => thread.isPinned);
+
+  // A thread whose column was frozen at selection time (because it is open in
+  // the pane) keeps that column until it is deselected — state or age changes
+  // must not slide the card the user is looking at to another column.
+  const assignments = new Map<string, { id: string; label: string }>();
+  for (const thread of unpinned) {
+    const frozen = frozenColumns.get(thread.id);
+    assignments.set(thread.id, frozen ?? columnFor(thread, groupBy, context, now));
+  }
+
+  const buckets = new Map<string, { label: string; threads: PluginSidebarThread[] }>();
+  for (const thread of unpinned) {
+    const target = assignments.get(thread.id);
+    if (target === undefined) continue;
+    const bucket = buckets.get(target.id);
+    if (bucket === undefined) {
+      buckets.set(target.id, { label: target.label, threads: [thread] });
+    } else {
+      bucket.threads.push(thread);
+    }
+  }
+
+  const columns: BoardColumn[] = [...buckets.entries()]
+    .sort((a, b) => {
+      const keyDiff = columnSortKey(groupBy, a[0]) - columnSortKey(groupBy, b[0]);
+      if (keyDiff !== 0) return keyDiff;
+      return a[1].label.localeCompare(b[1].label);
+    })
+    .map(([id, bucket]) => ({ id, label: bucket.label, threads: sorted(bucket.threads) }));
+
+  // The Pinned column renders whenever a card has entered it, at the far
+  // left, before every other column.
+  if (pinned.length > 0) {
+    columns.unshift({ id: "pinned", label: "Pinned", threads: sorted(pinned) });
+  }
+
+  // The Done column renders whenever a card has entered it, at the far right.
+  if (done.length > 0) {
+    columns.push({ id: "done", label: "Done", threads: sorted(done) });
+  }
+  // A grouping with no buckets at all still shows the flat column.
+  if (groupBy === "none" && columns.length === 0) {
+    return [{ id: "all", label: "Threads", threads: [] }];
+  }
+  return columns;
+}

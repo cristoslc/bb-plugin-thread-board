@@ -1,0 +1,277 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ThreadChat } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+
+const PANE_WIDTH_KEY = "thread-board:paneWidth";
+const PANE_MIN_WIDTH = 320;
+const PANE_MAX_WIDTH = 900;
+const PANE_DEFAULT_WIDTH = 480;
+
+function readStoredPaneWidth(): number {
+  try {
+    const raw = window.localStorage.getItem(PANE_WIDTH_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(PANE_MAX_WIDTH, Math.max(PANE_MIN_WIDTH, value));
+      }
+    }
+  } catch {
+    // localStorage can throw in embedded contexts; fall through to default.
+  }
+  return PANE_DEFAULT_WIDTH;
+}
+
+/** What the pane needs from a thread; archived rows come from the SDK list. */
+export interface ThreadPaneThread {
+  id: string;
+  displayTitle: string;
+  status: PluginSidebarThread["status"];
+  isUnread: boolean;
+}
+
+interface ThreadPaneProps {
+  thread: ThreadPaneThread;
+  isArchived: boolean;
+  isDone: boolean;
+  onToggleDone: (done: boolean) => void;
+  onToggleArchived: () => void;
+  onToggleUnread: () => void;
+  onMaximize: () => void;
+  onClose: () => void;
+}
+
+interface ActionMenuItem {
+  id: string;
+  label: string;
+  icon: string;
+  run: () => void;
+}
+
+function ActionsMenu({ items }: { items: readonly ActionMenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+        aria-label="More thread actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Icon name="ChevronDown" className="size-4" />
+      </Button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            role="menu"
+            aria-label="More thread actions"
+            className="absolute right-0 top-8 z-50 min-w-40 rounded-md border border-border bg-popover p-1 shadow-md"
+          >
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  item.run();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent"
+              >
+                <Icon
+                  name={item.icon}
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function ThreadPane({
+  thread,
+  isArchived,
+  isDone,
+  onToggleDone,
+  onToggleArchived,
+  onToggleUnread,
+  onMaximize,
+  onClose,
+}: ThreadPaneProps) {
+  const [width, setWidth] = useState(readStoredPaneWidth);
+  const isCompact = useIsCompactViewport();
+  const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(
+    null,
+  );
+  const edgeRef = useRef<HTMLDivElement>(null);
+
+  const onPointerMove = useCallback((event: PointerEvent) => {
+    const drag = dragStateRef.current;
+    if (drag === null || event.pointerId !== drag.pointerId) return;
+    // The pane hugs the right edge, so dragging left grows it.
+    const delta = drag.startX - event.clientX;
+    const next = Math.min(PANE_MAX_WIDTH, Math.max(PANE_MIN_WIDTH, drag.startWidth + delta));
+    setWidth(next);
+  }, [setWidth]);
+
+  const endDrag = useCallback((event: PointerEvent) => {
+    const drag = dragStateRef.current;
+    if (drag === null || event.pointerId !== drag.pointerId) return;
+    dragStateRef.current = null;
+    try {
+      window.localStorage.setItem(PANE_WIDTH_KEY, String(width));
+    } catch {
+      // Best effort only; the pane still works without persistence.
+    }
+  }, [width]);
+
+  useEffect(() => {
+    const edge = edgeRef.current;
+    if (edge === null) return;
+    const startDrag = (event: PointerEvent) => {
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: width,
+      };
+      edge.setPointerCapture(event.pointerId);
+    };
+    edge.addEventListener("pointerdown", startDrag);
+    edge.addEventListener("pointermove", onPointerMove);
+    edge.addEventListener("pointerup", endDrag);
+    edge.addEventListener("pointercancel", endDrag);
+    return () => {
+      edge.removeEventListener("pointerdown", startDrag);
+      edge.removeEventListener("pointermove", onPointerMove);
+      edge.removeEventListener("pointerup", endDrag);
+      edge.removeEventListener("pointercancel", endDrag);
+    };
+  }, [width, onPointerMove, endDrag]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [onClose]);
+
+  return (
+    <aside
+      role="complementary"
+      aria-label={`Thread: ${thread.displayTitle}`}
+      className={
+        isCompact
+          ? // Compact viewport: the pane covers the board, so it floats as a
+            // full-screen sheet with a grab-handle close affordance.
+            "fixed inset-0 z-30 flex min-h-0 flex-col bg-background"
+          : "relative flex h-full min-h-0 flex-col border-l border-border bg-background shadow-lg"
+      }
+      style={isCompact ? undefined : { width }}
+    >
+      {!isCompact ? (
+        <div
+          ref={edgeRef}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize thread pane"
+          className="absolute inset-y-0 left-0 z-10 w-1.5 -ml-0.75 cursor-col-resize touch-none hover:bg-primary/20"
+        />
+      ) : null}
+      <header
+        className={
+          isCompact
+            ? "flex items-center gap-2 border-b border-border px-2 pb-2 pt-3"
+            : "flex items-center gap-2 border-b border-border px-3 py-2"
+        }
+      >
+        {isCompact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-foreground"
+            aria-label="Back to board"
+            onClick={onClose}
+          >
+            <Icon name="ChevronLeft" className="size-5" />
+          </Button>
+        ) : null}
+        <Icon
+          name={thread.status === "active" ? "Loading" : "MessageSquare"}
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {thread.displayTitle}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+          aria-label={thread.isUnread ? "Mark thread read" : "Mark thread unread"}
+          onClick={onToggleUnread}
+        >
+          <Icon name={thread.isUnread ? "MailOpen" : "Mail"} className="size-3.5" aria-hidden />
+          {thread.isUnread ? "Mark Read" : "Mark Unread"}
+        </Button>
+        {(() => {
+          const actionItems: ActionMenuItem[] = [
+            {
+              id: "done",
+              label: isDone ? "Mark Not Done" : "Mark Done",
+              icon: isDone ? "CircleCheck" : "Check",
+              run: () => onToggleDone(!isDone),
+            },
+            {
+              id: "archive",
+              label: isArchived ? "Unarchive" : "Archive",
+              icon: isArchived ? "ArchiveRestore" : "Archive",
+              run: onToggleArchived,
+            },
+          ];
+          return <ActionsMenu items={actionItems} />;
+        })()}
+        {!isCompact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="Open thread full screen"
+            onClick={onMaximize}
+          >
+            <Icon name="Maximize2" className="size-4" />
+          </Button>
+        ) : null}
+        {!isCompact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="Close thread pane"
+            onClick={onClose}
+          >
+            <Icon name="X" className="size-4" />
+          </Button>
+        ) : null}
+      </header>
+      <div className="min-h-0 flex-1">
+        <ThreadChat threadId={thread.id} variant="compact" layout="contained" />
+      </div>
+    </aside>
+  );
+}
