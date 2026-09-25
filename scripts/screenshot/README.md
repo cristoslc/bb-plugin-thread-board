@@ -17,11 +17,10 @@ host app involved.
   plus a minimal preflight (the plugin's compiled CSS ships without one
   because the host app provides it) and the `data-bb-plugin="thread-board"`
   attribute so the compiled utilities' scoping matches.
-- `shoot.mjs` — the capture driver. Captures each shot in both themes,
-  toggling the `dark` class per pass: five shots x two themes =
-  `name-dark.png` / `name-light.png` files (attention board, recency board,
-  board with the thread pane open — those three at 1920x1080 — plus board
-  and thread pane at phone size, 390x844).
+- `shoot.mjs` — the capture driver. Captures three shots in both themes,
+  toggling the `dark` class per pass: board with the thread pane open
+  (1920x1080), plus board and thread pane at phone size (390x844) —
+  `name-dark.png` / `name-light.png` files.
 
 Regenerate the screenshots:
 

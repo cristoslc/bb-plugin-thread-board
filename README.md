@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="docs/screenshots/board-state-dark.png">
+  <a href="docs/screenshots/board-thread-pane-dark.png">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-state-dark.png">
-      <img src="docs/screenshots/board-state-light.png" alt="Board grouped by Attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets" width="100%">
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
+      <img src="docs/screenshots/board-thread-pane-light.png" alt="Board grouped by Attention with the thread pane open: Pinned, Needs you, Unread, Working, then newest-first idle buckets, and a conversation pane slid in alongside" width="100%">
     </picture>
   </a>
 </p>
@@ -41,51 +41,26 @@ excluded.
 
 ## Screenshots
 
-<details>
-<summary>More screenshots</summary>
-
 <p align="center">
   <a href="docs/screenshots/board-thread-pane-dark.png">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
-      <img src="docs/screenshots/board-thread-pane-light.png" alt="Opening a card slides in a thread pane with the conversation" width="85%">
-    </picture>
+    <img src="docs/screenshots/board-thread-pane-dark.png" alt="Opening a card slides in a thread pane with the conversation" width="85%">
   </a>
   <br>
   <strong>Thread pane</strong> — opening a card slides in the conversation alongside the board
 </p>
 
 <p align="center">
-  <a href="docs/screenshots/board-recency-dark.png">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-recency-dark.png">
-      <img src="docs/screenshots/board-recency-light.png" alt="Last activity grouping: every thread bucketed by age, most recent leftmost" width="85%">
-    </picture>
-  </a>
-  <br>
-  <strong>Last activity</strong> — every thread bucketed by age, most recent leftmost
-</p>
-
-<p align="center">
-  <a href="docs/screenshots/phone-board-dark.png">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-board-dark.png">
-      <img src="docs/screenshots/phone-board-light.png" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally" width="32%">
-    </picture>
+  <a href="docs/screenshots/phone-board-light.png">
+    <img src="docs/screenshots/phone-board-light.png" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally" width="32%">
   </a>
   &nbsp;&nbsp;
   <a href="docs/screenshots/phone-thread-pane-dark.png">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-thread-pane-dark.png">
-      <img src="docs/screenshots/phone-thread-pane-light.png" alt="Thread pane full screen on a phone, with the conversation and reply box" width="32%">
-    </picture>
+    <img src="docs/screenshots/phone-thread-pane-dark.png" alt="Thread pane full screen on a phone, with the conversation and reply box" width="32%">
   </a>
   <br>
   <strong>Phone</strong> — the toolbar stacks and columns scroll horizontally;
   the thread pane goes full screen
 </p>
-
-</details>
 
 ## Install
 

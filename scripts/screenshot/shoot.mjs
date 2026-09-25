@@ -53,16 +53,8 @@ async function shot(name) {
 }
 
 async function captureAll() {
-  console.log("  state board");
-  await setViewport("desktop");
-  await goto("?groupBy=status");
-  await shot("board-state");
-
-  console.log("  recency board");
-  await goto("?groupBy=recency");
-  await shot("board-recency");
-
   console.log("  thread pane");
+  await setViewport("desktop");
   await goto("?groupBy=status");
   // A real mouse click starts an HTML5 drag on the draggable card and swallows
   // the mouseup, so dispatch the click programmatically instead.
