@@ -2,6 +2,12 @@
 
 *Source: docs/musings/2026-09-25-tracker-integration.md (decisions there are settled; "Mirror, don't integrate" is the chosen direction). The full adapter layer is explicitly out of scope for this sashay.*
 
+*Status (end-of-sashay): both phases shipped on branch
+`bb/sashay-tracker-mirroring-ticket-id-detection-lin-thr_ajjsj7f4fm`.
+Empirical finding that reshaped phase 2: the GitHub plugin exposes no RPC
+methods, so status reads its local SQLite cache server-side instead of
+`callRpc` (details below, kept as written at plan time).*
+
 ## Goal
 
 Cards on the board show the ticket references they carry, and clicking a
