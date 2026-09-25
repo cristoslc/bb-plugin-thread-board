@@ -16,7 +16,10 @@ window.localStorage.setItem("thread-board:search", "");
 window.localStorage.setItem("thread-board:filter:projects", "[]");
 window.localStorage.setItem("thread-board:filter:providers", "[]");
 window.localStorage.setItem("thread-board:filter:states", "[]");
-window.localStorage.setItem("thread-board:paneWidth", "480");
+window.localStorage.setItem(
+  "thread-board:paneWidth",
+  params.get("paneWidth") ?? "480",
+);
 
 const Component = registeredNavPanel.component;
 const rootElement = document.getElementById("root");

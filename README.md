@@ -2,11 +2,31 @@
 
 A kanban board of your bb threads with Kepler-style grouping and filtering.
 
+Works on desktop and phone — the board scrolls columns horizontally on narrow
+screens, and the thread pane goes full-screen.
+
+## Screenshots
+
+**Board grouped by Attention** — columns read left to right in order of
+attention: Pinned, Needs you, Unread, Working, then newest-first idle lanes.
+
 ![Board grouped by Attention, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets](docs/screenshots/board-state.png)
+
+**Last activity grouping** — every thread bucketed by age, most recent
+leftmost.
 
 ![Last activity grouping: every thread bucketed by age, most recent leftmost](docs/screenshots/board-recency.png)
 
+**Thread pane** — opening a card slides in the conversation. Shown here on
+desktop (side pane) and phone (full screen).
+
 ![Opening a card slides in a thread pane with the conversation](docs/screenshots/board-thread-pane.png)
+
+![Thread pane full screen on a phone, with the conversation and reply box](docs/screenshots/phone-thread-pane.png)
+
+**On a phone** — the board scrolls horizontally; cards stay full width.
+
+![Board on a phone: toolbar stacked vertically, columns scrolling horizontally](docs/screenshots/phone-board.png)
 
 ## What it does
 

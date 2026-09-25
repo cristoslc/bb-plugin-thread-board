@@ -14,13 +14,22 @@ const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Conte
 const BASE = process.env.HARNESS_URL ?? "http://localhost:5173/";
 const OUT = new URL("../../docs/screenshots/", import.meta.url).pathname;
 
+const VIEWPORTS = {
+  desktop: { width: 1920, height: 1080, deviceScaleFactor: 2 },
+  phone: { width: 390, height: 844, deviceScaleFactor: 2 }, // iPhone 14-ish
+};
+
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: 2 },
+  defaultViewport: VIEWPORTS.desktop,
   args: ["--hide-scrollbars"],
 });
 const page = await browser.newPage();
+
+async function setViewport(name) {
+  await page.setViewport(VIEWPORTS[name]);
+}
 
 async function goto(query) {
   await page.goto(`${BASE}${query}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
@@ -28,17 +37,22 @@ async function goto(query) {
   await new Promise((resolve) => setTimeout(resolve, 400));
 }
 
+async function shot(name) {
+  await page.screenshot({ path: `${OUT}${name}.png`, timeout: 30_000 });
+}
+
 await mkdir(OUT, { recursive: true });
 
-console.log("1/3 state board");
+console.log("1/5 state board");
+await setViewport("desktop");
 await goto("?groupBy=status");
-await page.screenshot({ path: `${OUT}board-state.png`, timeout: 30_000 });
+await shot("board-state");
 
-console.log("2/3 recency board");
+console.log("2/5 recency board");
 await goto("?groupBy=recency");
-await page.screenshot({ path: `${OUT}board-recency.png`, timeout: 30_000 });
+await shot("board-recency");
 
-console.log("3/3 thread pane");
+console.log("3/5 thread pane");
 await goto("?groupBy=status");
 // A real mouse click starts an HTML5 drag on the draggable card and swallows
 // the mouseup, so dispatch the click programmatically instead.
@@ -49,7 +63,22 @@ await page.evaluate(() => {
 });
 await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
 await new Promise((resolve) => setTimeout(resolve, 500));
-await page.screenshot({ path: `${OUT}board-thread-pane.png`, timeout: 30_000 });
+await shot("board-thread-pane");
+
+console.log("4/5 phone board");
+await setViewport("phone");
+await goto("?groupBy=status");
+await shot("phone-board");
+
+console.log("5/5 phone thread pane");
+await page.evaluate(() => {
+  const el = document.querySelector('a[href$="thr_permissions"]');
+  if (!el) throw new Error("card not found");
+  el.click();
+});
+await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
+await new Promise((resolve) => setTimeout(resolve, 500));
+await shot("phone-thread-pane");
 
 await browser.close();
 console.log("done");
