@@ -85,7 +85,7 @@ const AGE_BUCKETS: { id: string; label: string; minAge: number; maxAge: number }
 const RECENCY_COLUMN_ORDER: readonly string[] = [...AGE_BUCKETS]
   .reverse()
   .map((bucket) => bucket.id);
-const STATUS_COLUMN_ORDER: readonly string[] = [
+export const STATUS_COLUMN_ORDER: readonly string[] = [
   "attention",
   "unread",
   "working",

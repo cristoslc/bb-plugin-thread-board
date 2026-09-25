@@ -10,6 +10,12 @@ happy-path coverage suffices except where a cell is filled anyway.
 |---------------|--------------|-------|-----|------|--------|
 | Group threads into columns (`buildColumns`, `columnFor`) | low | auto (`tests/grouping.test.ts`) | auto (unknown group-by falls back) | auto (frozen column, pinned, done ordering) | skip (pure ordering) |
 | Filter + search threads (`filterThreads`, `matchesFilter`) | low | auto | auto (no match → empty) | auto (multi-dim intersection) | skip |
+| Family index (`buildFamilyIndex`) | low | auto (`tests/nesting.test.ts`) | auto (orphan → root) | auto (hidden/archived excluded) | auto (cycle tolerated) |
+| Nesting placement, Attention grouping (`nestUnderParents`) | low | auto (`tests/nesting.test.ts`) | auto (equal-rank child nests) | auto (done parent, live child promotes) | auto (promoted child keeps column sort) |
+| Nesting placement, axis groupings | low | auto (same-axis nests, `tests/nesting.test.ts`) | auto (cross-axis child standalone) | auto (recency/none always nest) | skip (pure placement) |
+| Depth cap (two levels, `+N more`) | low | auto (per-child count, `tests/nesting.test.ts`) | auto (no chip when no grandchildren) | auto (count correct) | skip |
+| Family-aware filter + search (`filterFamilies`) | low | auto (child match keeps family, `tests/nesting.test.ts`) | auto (no match drops family) | auto (non-matching members dimmed) | auto (promotion applied after filtering, project + provider) |
+| Board assembly composition (`assembleBoard`) | low | auto (nested child appears once, `tests/nesting.test.ts`) | auto (promoted/cross-axis child never duplicated as nested row) | auto (chip counts all visible children incl. promoted) | skip (pure composition) |
 | Mark thread done / not done (`done_set` RPC, card + pane actions) | low | auto (RPC schema round-trip in `tests/sweep.test.ts`) | auto (re-mark is idempotent) | auto (no timestamp → never sweep-eligible) | skip |
 | Done-column sweep arm + confirm (age ≥ `doneArchiveDays`, default 7) | medium (archives threads) | auto (`tests/sweep.test.ts`) | auto (no stamp → ineligible) | auto (boundary at exactly N days) | auto (late arrival excluded from armed list) |
 | Awhile-ago sweep arm + confirm (idle ≥ `idleArchiveDays`, default 30) | medium (archives threads) | auto (`tests/sweep.test.ts`) | auto (non-idle states excluded) | auto (boundary at exactly N days) | auto (done threads not claimed by idle arm) |
