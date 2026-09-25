@@ -115,11 +115,16 @@ and added three points, then refined the interaction model:
   and given the widened sweep it likely needs to apply to idle-aging cards
   too, not just Done ones.
 
-Sweep candidates worth deciding in the dedicated musing: does arming also
-apply to the Awhile-ago column's sweep separately (two buttons, or one sweep
-across columns)? Does the gather-at-top survive a live thread update arriving
-mid-arm? And where the count/aging comes from when Done is a tag: the stamp
-date on the card, same as the board already renders.
+Sweep decisions (operator, settled): **separate arms for each column** —
+the Done column and the Awhile-ago column each get their own sweep button,
+armed and fired independently, rather than one sweep across columns. And
+**arming captures an explicit list**: the set of cards selected is fixed at
+arm time; a late arrival (a thread that crosses the threshold, or a live
+update) does not join an already-armed sweep — it becomes eligible for the
+*next* arm. This removes the mid-arm race entirely: the second click archives
+exactly what was highlighted, nothing else. Still open for the dedicated
+musing: the aging basis when Done is a tag (stamp date, which the card
+already renders), and the sweep's CLI surface, if any.
 
 Open question: does the sidebar thread view expose `archivedAt` (or last
 activity) for Done cards to age against — or does the sweep age from the
