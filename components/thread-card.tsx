@@ -2,9 +2,9 @@ import { type ReactNode, useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { threadState } from "./grouping";
 import { findTicketRefs, resolveRepoSlug, type TicketRef } from "@/lib/tickets";
 import type { GitHubItemStatus } from "@/lib/tracker-status";
-import { threadState } from "./grouping";
 import { grandchildCountFor } from "./nesting";
 import { ThreadCardMenu, type CardMenuAction } from "./thread-card-menu";
 
@@ -43,10 +43,6 @@ interface ThreadCardProps {
   /** Highlighted because a sweep armed in this column captured the card. */
   isSweepHighlighted?: boolean;
   projectName: string;
-  /** GitHub repo base for the thread's project, when it has one. */
-  repoHrefBase?: string;
-  /** GitHub cache status lookup (repo slug + number), when wired. */
-  statusFor?: (repo: string | null, number: number | undefined) => GitHubItemStatus | undefined;
   menuActions?: readonly CardMenuAction[];
   /** Children that render as nested rows beneath this card, in display order. */
   childThreads?: readonly PluginSidebarThread[];
@@ -66,6 +62,10 @@ interface ThreadCardProps {
   onOpenThread?: (threadId: string) => void;
   /** Right-click menu actions for a nested child thread. */
   childMenuActions?: (thread: PluginSidebarThread) => readonly CardMenuAction[];
+  /** GitHub repo base for the thread's project, when it has one. */
+  repoHrefBase?: string;
+  /** GitHub cache status lookup (repo slug + number), when wired. */
+  statusFor?: (repo: string | null, number: number | undefined) => GitHubItemStatus | undefined;
 }
 
 /** Chip state-dot colors, mirroring the card's own state language. */
@@ -76,11 +76,24 @@ const STATUS_DOT_CLASS: Record<string, string> = {
 };
 
 /** Small clickable ticket chip; inert (span) when the ref has no href. */
-function TicketChip({ ref: ticket }: { ref: TicketRef }) {
+function TicketChip({
+  ticket,
+  status,
+}: {
+  ticket: TicketRef;
+  status: GitHubItemStatus | undefined;
+}) {
   const className = cn(
-    "inline-flex h-4 items-center rounded bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground",
+    "inline-flex h-4 items-center gap-1 rounded bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground",
     ticket.href && "hover:bg-accent hover:text-foreground",
   );
+  const dot =
+    status === undefined ? null : (
+      <span
+        className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT_CLASS[status.state] ?? "bg-muted-foreground/30")}
+        aria-label={`${status.kind} ${status.state}`}
+      />
+    );
   return ticket.href ? (
     <a
       href={ticket.href}
@@ -89,10 +102,14 @@ function TicketChip({ ref: ticket }: { ref: TicketRef }) {
       onClick={(event) => event.stopPropagation()}
       className={className}
     >
+      {dot}
       {ticket.raw}
     </a>
   ) : (
-    <span className={className}>{ticket.raw}</span>
+    <span className={className}>
+      {dot}
+      {ticket.raw}
+    </span>
   );
 }
 
@@ -163,6 +180,7 @@ export function ThreadCard({
   isSweepHighlighted = false,
   projectName,
   repoHrefBase,
+  statusFor,
   menuActions,
   childThreads,
   childCount,
@@ -176,11 +194,11 @@ export function ThreadCard({
   const now = Date.now();
   const [collapsed, setCollapsed] = useState(false);
   const branch = thread.environment?.branchName ?? thread.host?.name ?? "";
+  const repo = repoHrefBase === undefined ? null : resolveRepoSlug(repoHrefBase);
   const ticketRefs = findTicketRefs(thread.displayTitle, {
     extraText: branch,
     repoHrefBase,
   });
-  const repo = repoHrefBase === undefined ? null : resolveRepoSlug(repoHrefBase);
   const children = childThreads ?? [];
   // The chip counts every visible child (prop from the raw family index);
   // fall back to the nested rows when the caller does not supply it.
@@ -254,7 +272,7 @@ export function ThreadCard({
           {ticketRefs.length === 0 ? null : (
             <div className="mt-1 flex flex-wrap gap-1 pl-1.5">
               {ticketRefs.map((ticket) => (
-                <TicketChip key={ticket.raw} ref={ticket} />
+                <TicketChip key={ticket.raw} ticket={ticket} status={statusFor?.(repo, ticket.number)} />
               ))}
             </div>
           )}

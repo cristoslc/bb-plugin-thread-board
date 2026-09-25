@@ -10,6 +10,7 @@ import {
   useSdk,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { findTicketRefs, resolveRepoSlug } from "./lib/tickets";
 import type { rpcContract } from "./server";
 import { Board } from "./components/board";
 import { BoardToolbar } from "./components/board-toolbar";
@@ -378,6 +379,66 @@ function BoardPage() {
     [actions, armedSweep],
   );
 
+  // Live GitHub status for ticket chips. Batched: one RPC per visible-ref
+  // snapshot (numeric refs grouped per repo), re-fetched when the thread
+  // list changes — no interval, no per-card calls. Failures degrade to
+  // "no status known"; the board never breaks on this path.
+  const [ticketStatuses, setTicketStatuses] = useState<Record<string, Record<number, { kind: string; state: string }>>>({});
+  const visibleRefKey = useMemo(
+    () =>
+      visibleThreads
+        .flatMap((thread) => {
+          const repoBase = repoBaseByProject[thread.projectId];
+          const repo = repoBase === undefined ? null : resolveRepoSlug(repoBase);
+          if (repo === null) return [];
+          const branch = thread.environment?.branchName ?? thread.host?.name ?? "";
+          return findTicketRefs(thread.displayTitle, { extraText: branch })
+            .filter((ref) => ref.number !== undefined)
+            .map((ref) => `${repo}#${ref.number}`);
+        })
+        .sort()
+        .join(","),
+    [visibleThreads, repoBaseByProject],
+  );
+  useEffect(() => {
+    if (visibleRefKey === "") {
+      setTicketStatuses({});
+      return;
+    }
+    let cancelled = false;
+    const wanted = new Map<string, Set<number>>();
+    for (const entry of visibleRefKey.split(",")) {
+      const at = entry.lastIndexOf("#");
+      const repo = entry.slice(0, at);
+      const num = Number(entry.slice(at + 1));
+      const set = wanted.get(repo) ?? new Set<number>();
+      set.add(num);
+      wanted.set(repo, set);
+    }
+    for (const [repo, numbers] of wanted) {
+      rpc
+        .call("tracker_status", { repo, numbers: [...numbers] })
+        .then(
+          (result) => {
+            if (!cancelled) {
+              setTicketStatuses((current) => ({ ...current, [repo]: result.statuses }));
+            }
+          },
+          () => {}, // Status is optional decoration; chips render without it.
+        );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleRefKey, rpc]);
+  const statusFor = useCallback(
+    (repo: string | null, number: number | undefined) => {
+      if (repo === null || number === undefined) return undefined;
+      return ticketStatuses[repo]?.[number];
+    },
+    [ticketStatuses],
+  );
+
   const anyFilterActive =
     filter.projects.size > 0 || filter.providers.size > 0 || filter.states.size > 0 || searchActive;
   const emptyBecauseFiltered = visibleThreads.length > 0 && searched.length === 0 && anyFilterActive;
@@ -521,6 +582,7 @@ function BoardPage() {
               projects.find((project) => project.id === projectId)?.name ?? "Personal"
             }
             repoBaseFor={repoBaseFor}
+            statusFor={statusFor}
             onOpenThread={openThreadCard}
             onNewTask={() => actions.openNewThread({ focusPrompt: true })}
             sweepCandidatesFor={sweepCandidatesFor}

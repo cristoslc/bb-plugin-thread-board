@@ -24,6 +24,10 @@ interface BoardProps {
   projectNameFor: (projectId: string) => string;
   /** GitHub repo base per project ("https://github.com/owner/repo"), when known. */
   repoBaseFor: (projectId: string) => string | null;
+  /** GitHub cache status for a repo slug + number, when known. */
+  statusFor?: (repo: string | null, number: number | undefined) =>
+    | { kind: string; state: string }
+    | undefined;
   onOpenThread: (threadId: string) => void;
   onNewTask: () => void;
   /** Drop a card onto the Done column. */
@@ -121,6 +125,7 @@ export function Board({
   dimmedIds,
   projectNameFor,
   repoBaseFor,
+  statusFor,
   onOpenThread,
   onNewTask,
   onDropDone,
@@ -226,6 +231,7 @@ export function Board({
                           isSweepHighlighted={armedSet?.has(thread.id) ?? false}
                           projectName={projectNameFor(thread.projectId)}
                           repoHrefBase={repoBaseFor(thread.projectId) ?? undefined}
+                          statusFor={statusFor}
                           menuActions={menuActionsFor(thread)}
                           childThreads={nestedChildrenByParent.get(thread.id)}
                           childCount={childCountByParent.get(thread.id) ?? 0}

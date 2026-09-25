@@ -19,6 +19,9 @@ import {
   type DoneRecord,
 } from "./lib/done-metadata";
 import { DEFAULT_DONE_ARCHIVE_DAYS, DEFAULT_IDLE_ARCHIVE_DAYS } from "./lib/sweep";
+import { readGitHubStatuses } from "./lib/tracker-status";
+import { resolveRepoSlug } from "./lib/tickets";
+
 import type { JsonValue } from "@get-bb/plugin-sdk";
 
 export const rpcContract = defineRpcContract({
@@ -36,6 +39,19 @@ export const rpcContract = defineRpcContract({
     input: z.object({ threadId: z.string().min(1), done: z.boolean() }),
     output: z.object({ done: z.boolean() }),
   },
+  tracker_status: {
+    input: z.object({
+      repo: z.string().min(1),
+      // Batch cap: one board view's visible refs stay well under 500; the
+      // cap bounds the SQL IN-list built in readGitHubStatuses (SQLite's
+      // default parameter limit is 999) and rejects runaway input.
+      numbers: z.array(z.number().int().positive()).max(500),
+    }),
+    output: z.object({
+      statuses: z.record(z.number().int(), z.object({ kind: z.string(), state: z.string() })),
+    }),
+  },
+
   sweep_config_get: {
     input: z.null(),
     output: z.object({
@@ -57,6 +73,9 @@ const DONE_CHANGED = "done-changed";
 const LEGACY_DONE_KEY = "done-thread-ids";
 /** Per-thread sweep keep flags, independent of Done marks. */
 const KEEP_KEY = "sweep-keep-flags";
+// The official GitHub plugin's local cache ("mirror, don't integrate":
+// read-only, degrade-to-empty access — see lib/tracker-status.ts).
+const GITHUB_CACHE_DB = ".bb/plugins/github/data.db";
 
 type KeepStore = Record<string, true>;
 
@@ -265,6 +284,12 @@ export default async function plugin(bb: BbPluginApi) {
       await writeDoneRecord(threadId, done);
       bb.realtime.publish(DONE_CHANGED, { threadId, done });
       return { done };
+    },
+    tracker_status: async ({ repo, numbers }) => {
+      const home = process.env.HOME ?? "";
+      if (home === "") return { statuses: {} };
+      const statuses = readGitHubStatuses(`${home}/${GITHUB_CACHE_DB}`, repo, numbers);
+      return { statuses };
     },
     sweep_config_get: async () => {
       const values = await settings.get();

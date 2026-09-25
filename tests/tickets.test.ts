@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findTicketRefs } from "../lib/tickets";
+import { findTicketRefs, resolveRepoSlug } from "../lib/tickets";
 
 const BASE = "https://github.com/owner/repo";
 
@@ -115,6 +115,19 @@ describe("findTicketRefs — GitHub URL forms", () => {
 
   it("does not match non-github issue URLs", () => {
     expect(findTicketRefs("see https://gitlab.com/owner/repo/issues/123")).toEqual([]);
+  });
+});
+
+describe("resolveRepoSlug", () => {
+  it("extracts owner/repo from GitHub remotes", () => {
+    expect(resolveRepoSlug("https://github.com/owner/repo.git")).toBe("owner/repo");
+    expect(resolveRepoSlug("git@github.com:owner/repo.git")).toBe("owner/repo");
+    expect(resolveRepoSlug("https://github.com/owner/repo")).toBe("owner/repo");
+  });
+
+  it("returns null for non-GitHub remotes", () => {
+    expect(resolveRepoSlug("https://gitlab.com/owner/repo.git")).toBeNull();
+    expect(resolveRepoSlug(null)).toBeNull();
   });
 });
 
