@@ -12,13 +12,16 @@ host app involved.
   here, so the app code runs unmodified.
 - `main.tsx` — seeds localStorage from the query string (`?groupBy=…`) and
   mounts the registered panel component.
-- `index.html` — defines bb's built-in dark theme tokens (extracted from the
-  bb app bundle), a minimal preflight (the plugin's compiled CSS ships
-  without one because the host app provides it), and sets
-  `data-bb-plugin="thread-board"` so the compiled utilities' scoping matches.
-- `shoot.mjs` — the capture driver (five shots: attention board, recency
-  board, board with the thread pane open — those three at 1920x1080 — plus
-  board and thread pane at phone size, 390x844).
+- `index.html` — defines bb's built-in theme tokens (extracted from the bb
+  app bundle): the dark set on `html.dark`, a light set on `html:not(.dark)`,
+  plus a minimal preflight (the plugin's compiled CSS ships without one
+  because the host app provides it) and the `data-bb-plugin="thread-board"`
+  attribute so the compiled utilities' scoping matches.
+- `shoot.mjs` — the capture driver. Captures each shot in both themes,
+  toggling the `dark` class per pass: five shots x two themes =
+  `name-dark.png` / `name-light.png` files (attention board, recency board,
+  board with the thread pane open — those three at 1920x1080 — plus board
+  and thread pane at phone size, 390x844).
 
 Regenerate the screenshots:
 
