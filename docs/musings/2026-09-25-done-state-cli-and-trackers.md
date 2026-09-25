@@ -28,14 +28,47 @@ ours. Two candidate shapes:
    follow-up. Costs storage, a server route, and a second source of truth for
    "what is done." Only worth it if the archive column proves insufficient.
 
-Lean toward shape 1 first: it adds a real lane with no new state at all, and
-the plugin stays a view over bb rather than a database beside it. If a
-separate "done but not archived" distinction shows up in real use, that's the
-evidence shape 2 needs.
+Update: the operator does want the separation — Done is a distinct lane from
+Archived, so **shape 2 is the chosen direction**. Done becomes plugin-owned
+state: a plugin database table keyed by thread ID, marked from a card action,
+clearable, and surviving while the thread itself stays active in bb. That
+makes this plugin the source of truth for "done," while bb stays the source
+of truth for the thread itself.
 
-Persisting the *choice to show Done* (the column toggle) is the same problem
-as group/filter persistence — separate question, still fine in localStorage,
-or move all view preferences server-side together later.
+The distinction earns its cost because the two states answer different
+questions: Done means "the work landed, but the thread may still be useful"
+(reference material, follow-up pending); Archived means "the thread itself is
+retired." A thread can be Done-not-archived, or archived without ever being
+marked Done.
+
+### The aging sweep: Done → Archived
+
+Marking Done is the beginning of a thread's exit, not a terminal state, so
+Done needs an exit to Archived. Two candidate shapes:
+
+1. **Automatic aging.** Threads marked Done for ≥ N days (a week?) archive
+   themselves. Reads bb's thread list server-side on a schedule or on board
+   load, archives anything past the threshold. Costs a background sweep, a
+   setting, and the surprise of an archive the operator didn't perform today.
+2. **A sweep button on the Done column.** The column header shows a count of
+   Done threads older than the threshold ("Sweep 6 done threads → archive");
+   one click archives them all. No background process, no surprise — the
+   operator pulls the lever. Undo is bb's unarchive, already wired.
+
+Lean toward **shape 2, with a threshold setting** (`doneArchiveDays`, default
+7): the button only ever proposes what aging would have done automatically,
+so graduating to a fully automatic sweep later is a settings change plus a
+scheduler, not a redesign. The count in the button label makes the cost of
+ignoring it visible, which an invisible automatic sweep never does. A per-card
+override ("keep this one forever" / pin-within-Done) protects threads you want
+to hold past the threshold; without it, a sweep that archives your reference
+thread once is the last time anyone uses the feature.
+
+Open question: does the sidebar thread view expose `archivedAt` (or last
+activity) for Done cards to age against — or does the sweep age from the
+*done-marked* timestamp instead? Marking time is the simpler and more
+predictable basis: "Done a week ago" is about your attention, not the
+thread's last flicker. Lean: age from the done-marked timestamp.
 
 ## Is a CLI command useful here?
 
@@ -53,6 +86,10 @@ view preferences or a plugin-level done flag land (shape 2), a small
 `bb thread-list` and `bb branch-janitor` do — managing plugin-owned state.
 
 Verdict: no CLI for read actions; revisit only alongside plugin-owned state.
+Update: plugin-owned state is now the direction (Done table + sweep), so a
+small `bb thread-board` surface (`done list`, `sweep`, `config`) comes back
+into scope with it — same rule as `bb thread-list`: the CLI exists to manage
+plugin-owned state, not to re-spell bb thread commands.
 
 ## Tracker integration without committing to a tracker
 
