@@ -1,33 +1,29 @@
 // bb-plugin-thread-board — a BB plugin backend entry.
 //
 // The board reads bb's live thread view through the frontend sidebar hooks.
-// Server state is: (1) the set of threads the user marked "Done" — one record
-// per thread in the board's plugin-metadata namespace (key "done" →
-// { doneAt: ISO-8601, keep? }), exposed over RPC and broadcast over realtime
-// so every open board updates — plus per-thread sweep keep flags in a KV
-// store (covers long-idle threads that were never marked Done); (2) the sweep
-// thresholds, from plugin settings.
+// Server state is: (1) the set of threads the user marked "Done" — per-thread
+// records with a first-seen `doneAt` stamp and an optional `keep` sweep
+// override — exposed over RPC and broadcast over realtime so every open
+// board updates; (2) the sweep thresholds, from plugin settings.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import {
-  DONE_METADATA_KEY,
-  parseDoneRecord,
-  stampDone,
-  type DoneRecord,
-} from "./lib/done-metadata";
 import { DEFAULT_DONE_ARCHIVE_DAYS, DEFAULT_IDLE_ARCHIVE_DAYS } from "./lib/sweep";
-import type { JsonValue } from "@get-bb/plugin-sdk";
 
 export const rpcContract = defineRpcContract({
   done_list: {
     input: z.null(),
     output: z.object({
       doneIds: z.array(z.string()),
+      records: z.record(z.string(), z.object({ doneAt: z.number().optional(), keep: z.boolean().optional() })),
     }),
   },
   done_set: {
     input: z.object({ threadId: z.string().min(1), done: z.boolean() }),
     output: z.object({ done: z.boolean() }),
+  },
+  sweep_keep_set: {
+    input: z.object({ threadId: z.string().min(1), keep: z.boolean() }),
+    output: z.object({ threadId: z.string().min(1), keep: z.boolean() }),
   },
   sweep_config_get: {
     input: z.null(),
@@ -36,41 +32,35 @@ export const rpcContract = defineRpcContract({
       idleArchiveDays: z.number().int().min(1),
     }),
   },
-  sweep_keep_set: {
-    input: z.object({ threadId: z.string().min(1), keep: z.boolean() }),
-    output: z.object({ threadId: z.string().min(1), keep: z.boolean() }),
-  },
 });
 
-/** Realtime signal after every done/keep write. Payload is { threadId, done }
- *  (was { count } before the metadata migration); consumers refetch on the
- *  event rather than reading the payload. */
 const DONE_CHANGED = "done-changed";
-/** Legacy KV key written before the metadata migration. */
-const LEGACY_DONE_KEY = "done-thread-ids";
-/** Per-thread sweep keep overrides, independent of Done marks: a long-idle
- *  thread that was never marked Done can be protected too. */
+const DONE_KEY = "done-thread-ids";
 const KEEP_KEY = "sweep-keep-flags";
+// Single source of truth: lib/sweep.ts owns the defaults.
+const DONE_DEFAULT_ARCHIVE_DAYS = DEFAULT_DONE_ARCHIVE_DAYS;
+const IDLE_DEFAULT_ARCHIVE_DAYS = DEFAULT_IDLE_ARCHIVE_DAYS;
 
+/** Per-thread Done record: first-seen stamp. Overrides live in KEEP_KEY. */
+interface DoneRecord {
+  doneAt?: number;
+  keep?: boolean;
+}
+type DoneStore = Record<string, DoneRecord>;
 type KeepStore = Record<string, true>;
 
-/**
- * The raw KV row shape for the keep store — the single encoding both
- * writeKept persists and readKept validates, so a written row round-trips.
- */
-export function keepRowFromStore(store: KeepStore): Record<string, { keep: true }> {
-  return Object.fromEntries(Object.keys(store).map((id) => [id, { keep: true as const }]));
+function isDoneEntry(entry: unknown): boolean {
+  if (typeof entry !== "object" || entry === null) return false;
+  return Object.entries(entry).every(([key, value]) => {
+    if (key === "doneAt") return value === undefined || typeof value === "number";
+    if (key === "keep") return value === undefined || typeof value === "boolean";
+    return false; // unknown keys rejected
+  });
 }
 
-export function keptFromRow(row: unknown): KeepStore | null {
-  if (row === null || row === undefined) return null;
-  if (typeof row !== "object" || Array.isArray(row)) return null;
-  const entries = Object.entries(row as Record<string, unknown>);
-  if (!entries.every(([, record]) => {
-    if (typeof record !== "object" || record === null || Array.isArray(record)) return false;
-    return (record as { keep?: unknown }).keep === true;
-  })) return null;
-  return Object.fromEntries(entries.map(([id]) => [id, true as const]));
+function isRecordMap(value: unknown): value is Record<string, DoneRecord> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every(isDoneEntry);
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -81,156 +71,86 @@ export default async function plugin(bb: BbPluginApi) {
       type: "number",
       label: "Sweep: archive Done threads after (days)",
       experimental_schema: z.number().int().min(1).max(365),
-      default: DEFAULT_DONE_ARCHIVE_DAYS,
+      default: DONE_DEFAULT_ARCHIVE_DAYS,
     },
     idleArchiveDays: {
       type: "number",
       label: "Sweep: archive long-idle threads after (days)",
       experimental_schema: z.number().int().min(1).max(3650),
-      default: DEFAULT_IDLE_ARCHIVE_DAYS,
+      default: IDLE_DEFAULT_ARCHIVE_DAYS,
     },
   });
 
-  async function readDoneRecord(
-    threadId: string,
-  ): Promise<DoneRecord | null> {
-    // getPluginMetadata returns an untyped namespace record; cast to the
-    // JsonValue contract parseDoneRecord validates.
-    const namespace = await bb.sdk.threads.getPluginMetadata({ threadId });
-    const value = (namespace as Record<string, JsonValue>)[DONE_METADATA_KEY];
-    return parseDoneRecord(value);
-  }
-
-  async function writeDoneRecord(threadId: string, done: boolean) {
-    const now = new Date();
-    if (done) {
-      const existing = await readDoneRecord(threadId);
-      const record = stampDone(existing, now);
-      await bb.sdk.threads.updatePluginMetadata({
-        threadId,
-        set: { [DONE_METADATA_KEY]: record },
-      });
-    } else {
-      await bb.sdk.threads.updatePluginMetadata({
-        threadId,
-        remove: [DONE_METADATA_KEY],
-      });
-    }
-  }
-
-  /**
-   * Legacy KV "done-thread-ids" held either a plain string[] (main's
-   * original shape) or a per-thread record map with epoch-ms doneAt and an
-   * optional keep flag (the sweep sibling's stopgap). Import both into
-   * per-thread metadata, then delete the key: metadata is the only store
-   * from here on. Checks each thread's existing record first, so a
-   * partial import converges on the next read and the key is deleted only
-   * once every entry is imported. Runs before both done_list and done_set:
-   * a done=false written while the legacy value is still present must not
-   * be resurrected by a later import.
-   */
-  async function importLegacyDone(): Promise<void> {
-    const legacy: unknown = await bb.storage.kv.get(LEGACY_DONE_KEY);
-    if (legacy === undefined || legacy === null) return;
-    const keepFlag = (keep: unknown) =>
-      typeof keep === "boolean" && keep ? { keep: true } : {};
-    if (Array.isArray(legacy)) {
-      // Main's shape: bare thread ids with no age data — stamp at import.
-      const iso = new Date().toISOString();
-      for (const id of legacy) {
-        if (typeof id !== "string") {
-          throw new Error(`legacy done ids: non-string entry ${JSON.stringify(id)}`);
-        }
-        await importOne(id, { doneAt: iso });
-      }
-    } else if (typeof legacy === "object") {
-      // Sweep sibling's shape: record map with epoch-ms doneAt, keep flag.
-      for (const [threadId, entry] of Object.entries(
-        legacy as Record<string, unknown>,
-      )) {
-        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-          throw new Error(
-            `legacy done records: malformed entry for ${JSON.stringify(threadId)}`,
-          );
-        }
-        const record = entry as { doneAt?: unknown; keep?: unknown };
-        if (
-          !(
-            (typeof record.doneAt === "number" &&
-              Number.isFinite(record.doneAt)) ||
-            (typeof record.doneAt === "string" &&
-              !Number.isNaN(Date.parse(record.doneAt)))
-          )
-        ) {
-          throw new Error(
-            `legacy done records: invalid doneAt for ${JSON.stringify(threadId)}: ${JSON.stringify(record.doneAt)}`,
-          );
-        }
-        const imported: DoneRecord =
-          typeof record.doneAt === "number"
-            ? {
-                doneAt: new Date(record.doneAt).toISOString(),
-                ...keepFlag(record.keep),
-              }
-            : // Epoch-free shape already; keep the ISO string as written,
-              // carry keep only when true (DoneRecord's optional keep).
-              { doneAt: record.doneAt, ...keepFlag(record.keep) };
-        await importOne(threadId, imported);
-      }
-    } else {
-      throw new Error(
-        `legacy done store: unexpected shape ${JSON.stringify(legacy)}`,
+  async function readDone(): Promise<DoneStore> {
+    const raw: unknown = await bb.storage.kv.get<unknown>(DONE_KEY);
+    // Threads stored by the pre-sweep version were a bare string[] of ids;
+    // they carry no stamp and are never sweep-eligible until re-marked.
+    if (Array.isArray(raw)) {
+      return Object.fromEntries(
+        raw.filter((id): id is string => typeof id === "string").map((id) => [id, {}]),
       );
     }
-    await bb.storage.kv.delete(LEGACY_DONE_KEY);
-  }
-
-  async function importOne(threadId: string, record: DoneRecord): Promise<void> {
-    const existing = await readDoneRecord(threadId);
-    if (existing !== null) return; // idempotent: never clobber live state
-    await bb.sdk.threads.updatePluginMetadata({
-      threadId,
-      set: { [DONE_METADATA_KEY]: record },
-    });
-  }
-
-  async function listDoneIds(): Promise<string[]> {
-    await importLegacyDone();
-    const live = await bb.sdk.threads.list({});
-    const doneIds: string[] = [];
-    for (const thread of live) {
-      const record = await readDoneRecord(thread.id);
-      if (record !== null) doneIds.push(thread.id);
-    }
-    return doneIds.sort();
+    if (isRecordMap(raw)) return raw;
+    // Fail loud in the log: a corrupt store must never be silently wiped by
+    // the next write, so the reset is announced.
+    bb.log.warn(`Done store under "${DONE_KEY}" failed validation; resetting to empty.`);
+    return {};
   }
 
   async function readKept(): Promise<KeepStore> {
     const raw: unknown = await bb.storage.kv.get<unknown>(KEEP_KEY);
-    const kept = keptFromRow(raw);
-    if (kept === null) {
-      if (raw !== null && raw !== undefined) {
-        bb.log.warn(`Sweep keep store under "${KEEP_KEY}" failed validation; resetting to empty.`);
-      }
-      return {};
+    if (isRecordMap(raw)) {
+      // Keep store only stores true flags.
+      return Object.fromEntries(
+        Object.entries(raw)
+          .filter(([, record]) => record.keep === true)
+          .map(([id]) => [id, true as const]),
+      );
     }
-    return kept;
+    if (raw !== null && raw !== undefined) {
+      bb.log.warn(`Sweep keep store under "${KEEP_KEY}" failed validation; resetting to empty.`);
+    }
+    return {};
+  }
+
+  async function writeDone(store: DoneStore): Promise<void> {
+    await bb.storage.kv.set(DONE_KEY, store);
+    bb.realtime.publish(DONE_CHANGED, { count: Object.keys(store).length });
   }
 
   async function writeKept(store: KeepStore): Promise<void> {
-    // Persist the exact row shape readKept validates, so a written row
-    // round-trips instead of failing validation and being wiped.
-    await bb.storage.kv.set(KEEP_KEY, keepRowFromStore(store));
+    await bb.storage.kv.set(KEEP_KEY, store);
+    bb.realtime.publish(DONE_CHANGED, { count: Object.keys(store).length });
   }
 
   bb.rpc.register(rpcContract, {
-    done_list: async () => ({ doneIds: await listDoneIds() }),
+    done_list: async () => {
+      const [store, kept] = await Promise.all([readDone(), readKept()]);
+      return {
+        doneIds: Object.keys(store).sort(),
+        records: Object.fromEntries(
+          Object.entries(store).map(([id, record]) => [
+            id,
+            { ...record, ...(kept[id] === true ? { keep: true } : {}) },
+          ]),
+        ),
+      };
+    },
     done_set: async ({ threadId, done }) => {
-      // Consume any legacy KV state before the first metadata write, or a
-      // later import could resurrect state this write just changed.
-      await importLegacyDone();
-      await writeDoneRecord(threadId, done);
-      bb.realtime.publish(DONE_CHANGED, { threadId, done });
+      const current = await readDone();
+      if (done) {
+        if (current[threadId]?.doneAt !== undefined) return { done }; // no-op re-mark
+        const record = current[threadId] ?? {};
+        const next = {
+          ...current,
+          [threadId]: { ...record, ...(record.doneAt === undefined ? { doneAt: Date.now() } : {}) },
+        };
+        await writeDone(next);
+      } else {
+        if (current[threadId] === undefined) return { done };
+        const { [threadId]: _removed, ...rest } = current;
+        await writeDone(rest);
+      }
       return { done };
     },
     sweep_config_get: async () => {
@@ -253,7 +173,6 @@ export default async function plugin(bb: BbPluginApi) {
         const { [threadId]: _removed, ...rest } = kept;
         await writeKept(rest);
       }
-      bb.realtime.publish(DONE_CHANGED, { threadId, done: false });
       return { threadId, keep };
     },
   });

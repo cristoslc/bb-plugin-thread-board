@@ -77,32 +77,35 @@ export function sweepCandidatesForIdleColumn(
 
 export type SweepColumnKind = "done" | "idle-bucket";
 
+/**
+ * Which sweep arm a column belongs to, or null when it is not sweepable.
+ * Single source of truth used by Board (button placement), app.tsx
+ * (eligibility dispatch), and armSweep.
+ */
+export function sweepColumnKind(columnId: string): SweepColumnKind | null {
+  if (columnId === "done") return "done";
+  if (columnId === "idle-awhile" || columnId === "awhile") return "idle-bucket";
+  return null;
+}
+
 export interface ArmedSweep {
-  columnKind: SweepColumnKind;
   columnId: string;
   /** Frozen at arm time; late arrivals never join. */
   threadIds: readonly string[];
-  armedAt: number;
 }
 
 /** Arm: capture the explicit, frozen list. Nothing moves until confirm. */
-export function armSweep(
-  columnId: string,
-  candidateIds: readonly string[],
-  now: number = Date.now(),
-): ArmedSweep {
+export function armSweep(columnId: string, candidateIds: readonly string[]): ArmedSweep {
   return {
-    columnKind: columnId === "done" ? "done" : "idle-bucket",
     columnId,
     threadIds: [...candidateIds],
-    armedAt: now,
   };
 }
 
 /**
- * Confirm: return exactly the captured list to archive. `null` (click-away,
- * Escape, re-click elsewhere) disarms and archives nothing.
+ * Confirm: return exactly the captured list to archive. `false` (click-away,
+ * Escape) disarms and archives nothing.
  */
-export function confirmSweep(armed: ArmedSweep, confirm: string | null): string[] {
-  return confirm === null ? [] : [...armed.threadIds];
+export function confirmSweep(armed: ArmedSweep, confirmed: boolean): string[] {
+  return confirmed ? [...armed.threadIds] : [];
 }

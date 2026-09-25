@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { rpcContract } from "../server";
 
 describe("sweep RPC contract", () => {
@@ -12,8 +13,12 @@ describe("sweep RPC contract", () => {
   });
 
   it("sweep_config_get output rejects non-integers", () => {
-    expect(() => sweep_config_get.output.parse({ doneArchiveDays: 1.5, idleArchiveDays: 30 })).toThrow();
-    expect(() => sweep_config_get.output.parse({ doneArchiveDays: 0, idleArchiveDays: 30 })).toThrow();
+    expect(() =>
+      rpcContract.sweep_config_get.output.parse({ doneArchiveDays: 1.5, idleArchiveDays: 30 }),
+    ).toThrow(z.ZodError);
+    expect(() =>
+      rpcContract.sweep_config_get.output.parse({ doneArchiveDays: 0, idleArchiveDays: 30 }),
+    ).toThrow(z.ZodError);
   });
 
   it("sweep_keep_set round-trips a keep flag", () => {

@@ -7,6 +7,7 @@ import {
   confirmSweep,
   sweepCandidatesForDoneColumn,
   sweepCandidatesForIdleColumn,
+  sweepColumnKind,
 } from "../lib/sweep";
 
 const HOUR = 60 * 60 * 1000;
@@ -294,20 +295,32 @@ describe("arm-then-confirm semantics", () => {
 
   it("confirm returns exactly the captured list and nothing else", () => {
     const armed = armSweep("done", ["a", "b"]);
-    const confirmed = confirmSweep(armed, "late");
+    const confirmed = confirmSweep(armed, true);
     expect(confirmed).toEqual(["a", "b"]);
   });
 
   it("confirm from an armed idle sweep does not leak into the done list", () => {
     const armed = armSweep("idle-awhile", ["a"]);
-    const confirmed = confirmSweep(armed, "a");
+    const confirmed = confirmSweep(armed, true);
     expect(confirmed).toEqual(["a"]);
   });
 
   it("disarm clears the armed state; confirm after disarm archives nothing", () => {
     const armed = armSweep("done", ["a"]);
-    const disarmed = confirmSweep(armed, null);
+    const disarmed = confirmSweep(armed, false);
     expect(disarmed).toEqual([]);
+  });
+});
+
+describe("column classification", () => {
+  it("names the sweepable columns; done vs idle-bucket; null for others", () => {
+    expect(sweepColumnKind("done")).toBe("done");
+    expect(sweepColumnKind("idle-awhile")).toBe("idle-bucket");
+    expect(sweepColumnKind("awhile")).toBe("idle-bucket");
+    expect(sweepColumnKind("working")).toBeNull();
+    expect(sweepColumnKind("idle-earlier")).toBeNull();
+    expect(sweepColumnKind("earlier")).toBeNull();
+    expect(sweepColumnKind("pinned")).toBeNull();
   });
 });
 

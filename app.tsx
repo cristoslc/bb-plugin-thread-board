@@ -33,6 +33,7 @@ import {
   confirmSweep,
   sweepCandidatesForDoneColumn,
   sweepCandidatesForIdleColumn,
+  sweepColumnKind,
   type ArmedSweep,
   type DoneAgeSource,
 } from "./lib/sweep";
@@ -282,13 +283,15 @@ function BoardPage() {
   const columns = assembly.columns;
 
   // Sweep eligibility per sweepable column, computed from the current board
-  // data. Arming (in armSweepFor) captures this list at arm time.
+  // data. Arming (in armSweepFor) captures this list at arm time; while a
+  // sweep is armed the FROZEN list is what Board displays and what confirm
+  // archives — the live recompute is only for the next arm.
   const sweepCandidatesFor = useCallback(
     (columnId: string): readonly string[] => {
       const column = columns.find((candidate) => candidate.id === columnId);
-      if (column === undefined) return [];
+      if (column === undefined || sweepColumnKind(columnId) === null) return [];
       const now = Date.now();
-      return columnId === "done"
+      return sweepColumnKind(columnId) === "done"
         ? sweepCandidatesForDoneColumn(
             column.threads,
             doneIds,
@@ -315,14 +318,15 @@ function BoardPage() {
 
   const confirmSweepFor = useCallback(
     (columnId: string) => {
-      setArmedSweep((current) => {
-        if (current === null || current.columnId !== columnId) return null;
-        const ids = confirmSweep(current, columnId);
-        for (const threadId of ids) actions.archive(threadId);
-        return null;
-      });
+      // Side effects stay out of the state updater: read the armed snapshot,
+      // clear it, then archive. React may re-invoke updaters; an archive call
+      // must never run twice.
+      const current = armedSweep;
+      if (current === null || current.columnId !== columnId) return;
+      setArmedSweep(null);
+      for (const threadId of confirmSweep(current, true)) actions.archive(threadId);
     },
-    [actions],
+    [actions, armedSweep],
   );
 
   const anyFilterActive =
@@ -470,7 +474,7 @@ function BoardPage() {
             onOpenThread={openThreadCard}
             onNewTask={() => actions.openNewThread({ focusPrompt: true })}
             sweepCandidatesFor={sweepCandidatesFor}
-            armedSweepColumnId={armedSweep?.columnId ?? null}
+            armedSweep={armedSweep}
             onSweepArm={armSweepFor}
             onSweepDisarm={disarmSweep}
             onSweepConfirm={confirmSweepFor}
@@ -540,7 +544,15 @@ function BoardPage() {
                     }));
                     rpc
                       .call("sweep_keep_set", { threadId: thread.id, keep: nextKeep })
-                      .catch(() => {});
+                      .catch(() => {
+                        // Roll the optimistic update back when the server
+                        // rejects; the board must not show a keep the server
+                        // never recorded.
+                        setDoneExtras((current) => ({
+                          ...current,
+                          [thread.id]: { ...current[thread.id], keep: !nextKeep },
+                        }));
+                      });
                   },
                 },
                 {

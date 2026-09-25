@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { BoardColumn } from "./grouping";
 import { threadState, withSweepGather } from "./grouping";
+import { sweepColumnKind, type ArmedSweep } from "../lib/sweep";
 import { ThreadCard } from "./thread-card";
 import type { CardMenuAction } from "./thread-card-menu";
 import { Icon } from "@/components/ui/icon";
@@ -31,11 +32,12 @@ interface BoardProps {
   menuActionsFor: (thread: PluginSidebarThread) => readonly CardMenuAction[];
   /**
    * Sweep wiring: eligibility per column (empty when nothing is eligible),
-   * and the armed lifecycle. The armed id list is frozen by the caller;
-   * `onSweepConfirm` receives the captured list to archive.
+   * and the armed lifecycle. While armed, `armedSweep`'s FROZEN id list is
+   * the display and confirm truth; `sweepCandidatesFor` is consulted only at
+   * arm time by the caller.
    */
   sweepCandidatesFor?: (columnId: string) => readonly string[];
-  armedSweepColumnId?: string | null;
+  armedSweep?: ArmedSweep | null;
   onSweepArm?: (columnId: string) => void;
   onSweepDisarm?: () => void;
   onSweepConfirm?: (columnId: string) => void;
@@ -122,7 +124,7 @@ export function Board({
   onDropUnread,
   menuActionsFor,
   sweepCandidatesFor,
-  armedSweepColumnId = null,
+  armedSweep = null,
   onSweepArm,
   onSweepDisarm,
   onSweepConfirm,
@@ -142,11 +144,16 @@ export function Board({
         {columns.map((column) => {
           const dropHandler = dropHandlerFor(column.id);
           const isDropTarget = dropHandler !== null;
-          const eligible =
-            sweepActive && (column.id === "done" || column.id.startsWith("idle-awhile") || column.id === "awhile")
+          const sweepKind = sweepColumnKind(column.id);
+          const isArmed = armedSweep !== null && armedSweep.columnId === column.id;
+          // While armed, the FROZEN list drives count, gather, and highlight
+          // — not the live eligible set. Before arming, the live eligible
+          // set is what the button proposes.
+          const eligible = isArmed
+            ? (armedSweep?.threadIds ?? [])
+            : sweepActive && sweepKind !== null
               ? (sweepCandidatesFor?.(column.id) ?? [])
               : [];
-          const isArmed = armedSweepColumnId === column.id && eligible.length > 0;
           const shownThreads = isArmed ? withSweepGather(column.threads, eligible) : column.threads;
           const armedSet = isArmed ? new Set(eligible) : null;
           return (
