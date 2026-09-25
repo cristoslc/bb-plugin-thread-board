@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { BoardColumn } from "./grouping";
-import { threadState } from "./grouping";
+import { threadState, withSweepGather } from "./grouping";
 import { ThreadCard } from "./thread-card";
 import type { CardMenuAction } from "./thread-card-menu";
 import { Icon } from "@/components/ui/icon";
@@ -29,6 +29,16 @@ interface BoardProps {
   onDropUnread: (threadId: string) => void;
   /** Right-click menu actions for one thread, sidebar-menu style. */
   menuActionsFor: (thread: PluginSidebarThread) => readonly CardMenuAction[];
+  /**
+   * Sweep wiring: eligibility per column (empty when nothing is eligible),
+   * and the armed lifecycle. The armed id list is frozen by the caller;
+   * `onSweepConfirm` receives the captured list to archive.
+   */
+  sweepCandidatesFor?: (columnId: string) => readonly string[];
+  armedSweepColumnId?: string | null;
+  onSweepArm?: (columnId: string) => void;
+  onSweepDisarm?: () => void;
+  onSweepConfirm?: (columnId: string) => void;
 }
 
 const DOT_CLASS: Record<string, string> = {
@@ -50,6 +60,54 @@ function StateDot({ thread }: { thread: PluginSidebarThread }) {
   );
 }
 
+function SweepButton({
+  eligibleCount,
+  isArmed,
+  onArm,
+  onConfirm,
+}: {
+  eligibleCount: number;
+  isArmed: boolean;
+  onArm: () => void;
+  onConfirm: () => void;
+}) {
+  if (eligibleCount === 0 && !isArmed) return null;
+  return (
+    <button
+      type="button"
+      data-sweep-button=""
+      aria-pressed={isArmed}
+      aria-label={
+        isArmed
+          ? `Confirm sweep of ${eligibleCount} threads from this column to Archive; click away to disarm`
+          : `Arm sweep for this column: ${eligibleCount} eligible threads`
+      }
+      onClick={(event) => {
+        event.stopPropagation();
+        if (isArmed) onConfirm();
+        else onArm();
+      }}
+      className={cn(
+        "inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] font-medium transition-colors",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isArmed
+          ? "bg-amber-500/90 text-amber-950 hover:bg-amber-500"
+          : "text-muted-foreground/70 hover:bg-accent/60 hover:text-foreground",
+      )}
+    >
+      <Icon name="Archive" className="size-3" aria-hidden />
+      {isArmed ? (
+        <>
+          Sweep {eligibleCount} → Archive
+          <span aria-hidden>?</span>
+        </>
+      ) : (
+        <>Sweep {eligibleCount}</>
+      )}
+    </button>
+  );
+}
+
 export function Board({
   columns,
   activeThreadId,
@@ -63,8 +121,14 @@ export function Board({
   onDropDone,
   onDropUnread,
   menuActionsFor,
+  sweepCandidatesFor,
+  armedSweepColumnId = null,
+  onSweepArm,
+  onSweepDisarm,
+  onSweepConfirm,
 }: BoardProps) {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const sweepActive = sweepCandidatesFor !== undefined && onSweepArm !== undefined;
   // Only the Done and Unread lanes accept drops; Unread exists as a column
   // only in the Attention grouping.
   const dropHandlerFor = (columnId: string): ((threadId: string) => void) | null => {
@@ -78,6 +142,13 @@ export function Board({
         {columns.map((column) => {
           const dropHandler = dropHandlerFor(column.id);
           const isDropTarget = dropHandler !== null;
+          const eligible =
+            sweepActive && (column.id === "done" || column.id.startsWith("idle-awhile") || column.id === "awhile")
+              ? (sweepCandidatesFor?.(column.id) ?? [])
+              : [];
+          const isArmed = armedSweepColumnId === column.id && eligible.length > 0;
+          const shownThreads = isArmed ? withSweepGather(column.threads, eligible) : column.threads;
+          const armedSet = isArmed ? new Set(eligible) : null;
           return (
             <section
               key={column.id}
@@ -114,6 +185,16 @@ export function Board({
                 <span className="text-[11px] tabular-nums text-muted-foreground/60">
                   {column.threads.length}
                 </span>
+                {sweepActive ? (
+                  <span className="ml-auto">
+                    <SweepButton
+                      eligibleCount={eligible.length}
+                      isArmed={isArmed}
+                      onArm={() => onSweepArm?.(column.id)}
+                      onConfirm={() => onSweepConfirm?.(column.id)}
+                    />
+                  </span>
+                ) : null}
               </header>
               <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-muted/30 p-1.5">
                 {column.threads.length === 0 && dragOverColumn !== column.id ? (
@@ -125,13 +206,14 @@ export function Board({
                 ) : null}
                 {column.threads.length === 0 ? null : (
                   <ul className="flex flex-col gap-1.5">
-                    {column.threads.map((thread) => (
+                    {shownThreads.map((thread) => (
                       <li key={thread.id}>
                         <ThreadCard
                           thread={thread}
                           stateDot={<StateDot thread={thread} />}
                           isActive={thread.id === activeThreadId}
                           isDone={doneIds.has(thread.id)}
+                          isSweepHighlighted={armedSet?.has(thread.id) ?? false}
                           projectName={projectNameFor(thread.projectId)}
                           menuActions={menuActionsFor(thread)}
                           childThreads={nestedChildrenByParent.get(thread.id)}
@@ -169,4 +251,25 @@ export function Board({
       </div>
     </div>
   );
+}
+
+/** Disarm an armed sweep when the operator clicks anywhere else. */
+export function useSweepClickAway(armed: boolean, onDisarm: () => void): void {
+  useEffect(() => {
+    if (!armed) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-sweep-button]")) return;
+      onDisarm();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDisarm();
+    };
+    document.addEventListener("pointerdown", onPointerDown, { capture: true });
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      document.removeEventListener("keydown", onKeyDown, { capture: true });
+    };
+  }, [armed, onDisarm]);
 }
