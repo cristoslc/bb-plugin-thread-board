@@ -62,12 +62,37 @@ Open design points:
 - Does the board *write* through `bb thread-tags` (CLI from host) or the
   thread-tags plugin's RPC? CLI is simplest; RPC avoids shelling out.
 
-Lean: Done-as-tag with a stamped form (`done:YYYY-MM-DD`), reserved `done:*`
-namespace, board writes via RPC if available and CLI as fallback. The plugin
-database then holds nothing for Done — it holds, at most, sweep/override
-bookkeeping if tags prove insufficient.
+Earlier lean (superseded below): Done-as-tag with a stamped form, reserved
+namespace, writes via RPC with CLI fallback.
 
-## Scope note: what stays device-local
+## The dependency question, settled: thread metadata is bb-native
+
+Checked the SDK (`@get-bb/plugin-sdk` bundled types, 2026-09-25): bb exposes
+`threads.getPluginMetadata` / `threads.updatePluginMetadata` as core surfaces,
+namespaced by `pluginId`. The thread-tags plugin does not own that store — it
+stores tags as its own namespace's `"tags"` key inside it
+(`TAGS_METADATA_KEY`), plus a `bb.storage.kv` registry for autocomplete.
+
+Consequences:
+
+- **No dependency on the tags plugin.** The board writes Done into its own
+  thread-metadata namespace (`pluginId: "thread-board"`, key `"done"` —
+  e.g. `{ doneAt: "2026-09-25", keep: true }`). Server-side, all clients
+  render it, survives alongside tags, zero cross-plugin coupling.
+- **Do not absorb tags.** Tags and Done would be two encodings of one store;
+  absorbing duplicates the tags plugin's registry/CLI/skill for no gain and
+  creates two sources of truth for the same data. The board reads tags for
+  display if useful later; it never writes them.
+- **The one thing tags gave that metadata does not:** agents marking threads
+  done for free via `bb thread-tags`. With plugin-metadata Done, agents need
+  a board-provided tool or CLI to mark done — that is the CLI musing's
+  `done list`/`mark` surface, now with a concrete reason to exist.
+- Done-as-tag remains possible (a board-specific stamp tag written via the
+  tags plugin's RPC), but it buys visibility in the tags panel at the price
+  of coupling to another plugin's namespace. Lean flips to **plugin metadata:
+  own namespace, stamped `doneAt`, optional `keep` flag** — same server-side
+  guarantees, no dependency.
+
 
 View preferences (group/filter/search) and pane width stay in localStorage —
 deliberately. Different machines and browser tabs do different things, and
