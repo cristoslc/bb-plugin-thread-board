@@ -27,6 +27,10 @@
 - **Filter** by project, provider, and thread state (Working / Needs you /
   Unread / Idle).
 - **Search** across thread titles and ids.
+- **Nest** subthreads beneath their parent card, Jira-subissue style:
+  collapsible child rows on the card, with needs-you children promoted to
+  their own column so they never hide, and family-aware filtering that
+  surfaces the whole family when any member matches.
 - Cards show state, pin, pending-interaction badge, relative update time,
   title, and branch or host. Click opens the thread; modified-click opens it
   in a new window natively.
