@@ -5,27 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Thread Board — screenshot harness</title>
     <style>
-      /* bb's built-in dark theme tokens, extracted from the bb app bundle so
-         the harness renders with the same palette the host supplies. */
-      :root {
+      /* bb's built-in theme tokens, extracted from the bb app bundle so the
+         harness renders with the same palette the host supplies. The dark
+         set is on html.dark; the light set is its neutral inverse. Which
+         one applies is controlled by the html class, which shoot.mjs
+         toggles per capture. */
+      html.dark {
         --canvas: oklch(19.5% 0 0);
         --ink: oklch(81% 0 0);
+        --primary: oklch(82% 0 0);
+        --primary-foreground: oklch(21.78% 0 0);
+        --muted-foreground: oklch(78% 0 0);
+        --destructive: oklch(56% 0.19 22.1703);
+        --destructive-foreground: oklch(100% 0 0);
+        color-scheme: dark;
+      }
+      html:not(.dark) {
+        --canvas: oklch(98.5% 0 0);
+        --ink: oklch(22% 0 0);
+        --primary: oklch(22% 0 0);
+        --primary-foreground: oklch(98% 0 0);
+        --muted-foreground: oklch(45% 0 0);
+        --destructive: oklch(56% 0.19 22.1703);
+        --destructive-foreground: oklch(100% 0 0);
+        color-scheme: light;
+      }
+      :root {
         --background: var(--canvas);
         --foreground: var(--ink);
         --card: var(--canvas);
         --card-foreground: var(--ink);
         --popover: var(--canvas);
         --popover-foreground: var(--ink);
-        --primary: oklch(82% 0 0);
-        --primary-foreground: oklch(21.78% 0 0);
         --muted: color-mix(in oklch, var(--ink) 16%, var(--canvas));
-        --muted-foreground: oklch(78% 0 0);
         --accent: color-mix(in oklch, var(--ink) 13%, var(--canvas));
         --accent-foreground: var(--ink);
         --secondary: color-mix(in oklch, var(--ink) 13%, var(--canvas));
         --secondary-foreground: var(--ink);
-        --destructive: oklch(56% 0.19 22.1703);
-        --destructive-foreground: oklch(100% 0 0);
         --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
         --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
         --ring: var(--primary);
@@ -53,7 +69,6 @@
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
-        color-scheme: dark;
       }
       /* Minimal preflight: the plugin's compiled CSS ships without one because
          the bb host app already resets elements; the harness must stand in. */

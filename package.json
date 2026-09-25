@@ -2,6 +2,7 @@
   "name": "bb-plugin-thread-board",
   "version": "0.1.4",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "build": "bb plugin build",
     "test": "vitest run",
@@ -13,7 +14,7 @@
   },
   "bb": {
     "name": "Thread Board",
-    "description": "A kanban board of your threads with Kepler-style group-by and filter selections.",
+    "description": "A kanban board of your threads with group-by and filter selections.",
     "branding": {
       "icon": "Columns2"
     },

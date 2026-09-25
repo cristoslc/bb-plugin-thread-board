@@ -27,6 +27,16 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 
+let currentTheme = "dark";
+
+// The harness's palette is driven by the `dark` class on <html>; flipping it
+// is how we capture both theme variants of each shot.
+async function setTheme(theme) {
+  await page.evaluate((t) => {
+    document.documentElement.classList.toggle("dark", t === "dark");
+  }, theme);
+}
+
 async function setViewport(name) {
   await page.setViewport(VIEWPORTS[name]);
 }
@@ -34,51 +44,60 @@ async function setViewport(name) {
 async function goto(query) {
   await page.goto(`${BASE}${query}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
   await page.waitForSelector("section[aria-label]", { timeout: 15_000 });
+  await setTheme(currentTheme);
   await new Promise((resolve) => setTimeout(resolve, 400));
 }
 
 async function shot(name) {
-  await page.screenshot({ path: `${OUT}${name}.png`, timeout: 30_000 });
+  await page.screenshot({ path: `${OUT}${name}-${currentTheme}.png`, timeout: 30_000 });
+}
+
+async function captureAll() {
+  console.log("  state board");
+  await setViewport("desktop");
+  await goto("?groupBy=status");
+  await shot("board-state");
+
+  console.log("  recency board");
+  await goto("?groupBy=recency");
+  await shot("board-recency");
+
+  console.log("  thread pane");
+  await goto("?groupBy=status");
+  // A real mouse click starts an HTML5 drag on the draggable card and swallows
+  // the mouseup, so dispatch the click programmatically instead.
+  await page.evaluate(() => {
+    const el = document.querySelector('a[href$="thr_permissions"]');
+    if (!el) throw new Error("card not found");
+    el.click();
+  });
+  await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await shot("board-thread-pane");
+
+  console.log("  phone board");
+  await setViewport("phone");
+  await goto("?groupBy=status");
+  await shot("phone-board");
+
+  console.log("  phone thread pane");
+  await page.evaluate(() => {
+    const el = document.querySelector('a[href$="thr_permissions"]');
+    if (!el) throw new Error("card not found");
+    el.click();
+  });
+  await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await shot("phone-thread-pane");
 }
 
 await mkdir(OUT, { recursive: true });
 
-console.log("1/5 state board");
-await setViewport("desktop");
-await goto("?groupBy=status");
-await shot("board-state");
-
-console.log("2/5 recency board");
-await goto("?groupBy=recency");
-await shot("board-recency");
-
-console.log("3/5 thread pane");
-await goto("?groupBy=status");
-// A real mouse click starts an HTML5 drag on the draggable card and swallows
-// the mouseup, so dispatch the click programmatically instead.
-await page.evaluate(() => {
-  const el = document.querySelector('a[href$="thr_permissions"]');
-  if (!el) throw new Error("card not found");
-  el.click();
-});
-await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
-await new Promise((resolve) => setTimeout(resolve, 500));
-await shot("board-thread-pane");
-
-console.log("4/5 phone board");
-await setViewport("phone");
-await goto("?groupBy=status");
-await shot("phone-board");
-
-console.log("5/5 phone thread pane");
-await page.evaluate(() => {
-  const el = document.querySelector('a[href$="thr_permissions"]');
-  if (!el) throw new Error("card not found");
-  el.click();
-});
-await page.waitForSelector('aside[aria-label^="Thread:"]', { timeout: 5_000 });
-await new Promise((resolve) => setTimeout(resolve, 500));
-await shot("phone-thread-pane");
+for (const theme of ["dark", "light"]) {
+  currentTheme = theme;
+  console.log(`${theme} theme`);
+  await captureAll();
+}
 
 await browser.close();
 console.log("done");

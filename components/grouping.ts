@@ -67,7 +67,7 @@ export const THREAD_STATE_LABELS: Record<ThreadState, string> = {
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-// Kepler-style age buckets for idle threads (Attention grouping) and for all
+// Age buckets for idle threads (Attention grouping) and for all
 // threads (Last activity grouping). Ordered oldest-first for lookup; the
 // column orders below reverse them so boards read newest-leftmost.
 const AGE_BUCKETS: { id: string; label: string; minAge: number; maxAge: number }[] = [

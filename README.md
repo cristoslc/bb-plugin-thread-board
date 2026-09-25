@@ -1,12 +1,25 @@
 # Thread Board
 
-A kanban board of your bb threads with Kepler-style grouping and filtering.
+<p align="center">
+  A kanban board of your bb threads with grouping and filtering.
+</p>
+
+<p align="center">
+  <a href="#install"><img alt="bb plugin" src="https://img.shields.io/badge/install%20with-bb%20plugin-8a2be2"></a>
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-339933">
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/cristoslc/bb-plugin-thread-board"></a>
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-state-dark.png">
+  <img src="docs/screenshots/board-state-light.png" alt="Board grouped by Attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets" width="100%">
+</picture>
 
 ## What it does
 
-- **Group** threads into columns by Attention (attention-priority lanes,
-  then recency-decayed idle lanes), Last activity, Project, Provider, Machine
-  (which bb host the thread runs on), or None (one flat column).
+- **Group** threads into columns by Attention, Last activity, Project,
+  Provider, Machine (which bb host the thread runs on), or None (one flat
+  column).
 - **Filter** by project, provider, and thread state (Working / Needs you /
   Unread / Idle).
 - **Search** across thread titles and ids.
@@ -24,11 +37,43 @@ excluded.
 
 ## Screenshots
 
-| Desktop | Phone |
-| --- | --- |
-| **Attention grouping** — columns read left to right by priority: Pinned, Needs you, Unread, Working, then newest-first idle lanes.<br><img src="docs/screenshots/board-state.png" width="100%" alt="Board grouped by Attention, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets"> | **Board** — the toolbar stacks and columns scroll horizontally; cards stay full width.<br><img src="docs/screenshots/phone-board.png" width="60%" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally"> |
-| **Last activity** — every thread bucketed by age, most recent leftmost.<br><img src="docs/screenshots/board-recency.png" width="100%" alt="Last activity grouping: every thread bucketed by age, most recent leftmost"> | **Thread pane** — opening a card goes full screen with the conversation and reply box.<br><img src="docs/screenshots/phone-thread-pane.png" width="60%" alt="Thread pane full screen on a phone, with the conversation and reply box"> |
-| **Thread pane** — opening a card slides in the conversation alongside the board.<br><img src="docs/screenshots/board-thread-pane.png" width="100%" alt="Opening a card slides in a thread pane with the conversation"> | |
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
+    <img src="docs/screenshots/board-thread-pane-light.png" alt="Opening a card slides in a thread pane with the conversation" width="85%">
+  </picture>
+  <br>
+  <strong>Thread pane</strong> — opening a card slides in the conversation alongside the board
+</p>
+
+<details>
+<summary>More screenshots</summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-recency-dark.png">
+    <img src="docs/screenshots/board-recency-light.png" alt="Last activity grouping: every thread bucketed by age, most recent leftmost" width="85%">
+  </picture>
+  <br>
+  <strong>Last activity</strong> — every thread bucketed by age, most recent leftmost
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-board-dark.png">
+    <img src="docs/screenshots/phone-board-light.png" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally" width="32%">
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-thread-pane-dark.png">
+    <img src="docs/screenshots/phone-thread-pane-light.png" alt="Thread pane full screen on a phone, with the conversation and reply box" width="32%">
+  </picture>
+  <br>
+  <strong>Phone</strong> — the toolbar stacks and columns scroll horizontally;
+  the thread pane goes full screen
+</p>
+
+</details>
 
 ## Install
 

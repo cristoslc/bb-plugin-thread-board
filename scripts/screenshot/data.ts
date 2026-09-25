@@ -247,7 +247,7 @@ export const SIM_THREADS: readonly SimThread[] = [
   // Idle · A while ago
   thread({
     id: "thr_grouping_spike",
-    displayTitle: "Spike: Kepler-style grouping model",
+    displayTitle: "Spike: grouping model",
     updatedAt: SIM_NOW - 9 * DAY,
     lastReadAt: SIM_NOW - 9 * DAY,
   }),
