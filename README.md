@@ -41,6 +41,9 @@ excluded.
 
 ## Screenshots
 
+<details>
+<summary>More screenshots</summary>
+
 <p align="center">
   <a href="docs/screenshots/board-thread-pane-dark.png">
     <picture>
@@ -51,9 +54,6 @@ excluded.
   <br>
   <strong>Thread pane</strong> — opening a card slides in the conversation alongside the board
 </p>
-
-<details>
-<summary>More screenshots</summary>
 
 <p align="center">
   <a href="docs/screenshots/board-recency-dark.png">
