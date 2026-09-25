@@ -26,6 +26,9 @@ happy-path coverage suffices except where a cell is filled anyway.
 | Arm-then-confirm semantics (frozen list, disarm on click-away/Escape, count freeze, updater-pure confirm) | medium (blast-radius legibility) | auto (`tests/sweep.test.ts`, `tests/sweep-gather.test.ts`) | auto (disarm archives nothing) | auto (re-arm recaptures fresh eligibility; armed column with zero live count stays confirmable) | auto (arm Done, then arm idle disarms first) |
 | Thread pane archive / unarchive | low | manual (bb-native `sdk.threads` surface, exercised by existing pane flows) | manual (archived thread stays open in pane) | manual | skip |
 | Plugin settings (`doneArchiveDays`, `idleArchiveDays`) via `bb plugin config` | low | manual (`bb plugin config thread-board set …`) | auto (schema rejects non-integers via zod) | manual (default when unset) | skip |
+| Ticket-ref detection (`findTicketRefs`: `PROJ-123`, `#N`, GitHub URLs) | low | auto (`tests/tickets.test.ts`) | auto (lowercase keys, `#0`, non-GitHub URLs rejected) | auto (dates/versions/mid-word guards, dedup across title+branch) | skip (pure ordering) |
+| Ticket-chip link-out (repo base from `gitRemoteUrl`, href or inert chip) | low | auto (`tests/tickets.test.ts` href resolution) | auto (no base → no href) | auto (pull URL keeps its own href) | skip |
+| GitHub status cache read (`readGitHubStatuses`, `tracker_status` RPC) | low (read-only external cache) | auto (`tests/tracker-status.test.ts` hit + live-cache probe) | auto (missing DB/table → empty map, no throw) | auto (partial match, empty ref list) | skip |
 
 Auto = vitest (`npm test`). Manual = operator-assisted check during the
 sashay's hand-to-operator step; no automated E2E exists for the embedded
