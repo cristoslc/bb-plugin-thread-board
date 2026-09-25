@@ -49,10 +49,28 @@ interface DoneRecord {
 type DoneStore = Record<string, DoneRecord>;
 type KeepStore = Record<string, true>;
 
+/**
+ * The raw KV row shape for the keep store — the single encoding both
+ * writeKept persists and readKept validates, so a written row round-trips.
+ */
+export function keepRowFromStore(store: KeepStore): Record<string, { keep: true }> {
+  return Object.fromEntries(Object.keys(store).map((id) => [id, { keep: true as const }]));
+}
+
+export function keptFromRow(row: unknown): KeepStore | null {
+  if (row === null || row === undefined) return null;
+  if (!isRecordMap(row)) return null;
+  return Object.fromEntries(
+    Object.entries(row)
+      .filter(([, record]) => record.keep === true)
+      .map(([id]) => [id, true as const]),
+  );
+}
+
 function isDoneEntry(entry: unknown): boolean {
   if (typeof entry !== "object" || entry === null) return false;
   return Object.entries(entry).every(([key, value]) => {
-    if (key === "doneAt") return value === undefined || typeof value === "number";
+    if (key === "doneAt") return value === undefined || (typeof value === "number" && Number.isFinite(value));
     if (key === "keep") return value === undefined || typeof value === "boolean";
     return false; // unknown keys rejected
   });
@@ -99,27 +117,25 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function readKept(): Promise<KeepStore> {
     const raw: unknown = await bb.storage.kv.get<unknown>(KEEP_KEY);
-    if (isRecordMap(raw)) {
-      // Keep store only stores true flags.
-      return Object.fromEntries(
-        Object.entries(raw)
-          .filter(([, record]) => record.keep === true)
-          .map(([id]) => [id, true as const]),
-      );
+    const kept = keptFromRow(raw);
+    if (kept === null) {
+      if (raw !== null && raw !== undefined) {
+        bb.log.warn(`Sweep keep store under "${KEEP_KEY}" failed validation; resetting to empty.`);
+      }
+      return {};
     }
-    if (raw !== null && raw !== undefined) {
-      bb.log.warn(`Sweep keep store under "${KEEP_KEY}" failed validation; resetting to empty.`);
-    }
-    return {};
+    return kept;
+  }
+
+  async function writeKept(store: KeepStore): Promise<void> {
+    // Persist the exact row shape readKept validates, so a written row
+    // round-trips instead of failing validation and being wiped.
+    await bb.storage.kv.set(KEEP_KEY, keepRowFromStore(store));
+    bb.realtime.publish(DONE_CHANGED, { count: Object.keys(store).length });
   }
 
   async function writeDone(store: DoneStore): Promise<void> {
     await bb.storage.kv.set(DONE_KEY, store);
-    bb.realtime.publish(DONE_CHANGED, { count: Object.keys(store).length });
-  }
-
-  async function writeKept(store: KeepStore): Promise<void> {
-    await bb.storage.kv.set(KEEP_KEY, store);
     bb.realtime.publish(DONE_CHANGED, { count: Object.keys(store).length });
   }
 
@@ -128,12 +144,17 @@ export default async function plugin(bb: BbPluginApi) {
       const [store, kept] = await Promise.all([readDone(), readKept()]);
       return {
         doneIds: Object.keys(store).sort(),
-        records: Object.fromEntries(
-          Object.entries(store).map(([id, record]) => [
+        records: Object.fromEntries([
+          ...Object.entries(store).map(([id, record]) => [
             id,
             { ...record, ...(kept[id] === true ? { keep: true } : {}) },
           ]),
-        ),
+          // Keep flags for threads never marked Done still ride to the
+          // client — the idle arm honors them.
+          ...Object.keys(kept)
+            .filter((id) => store[id] === undefined)
+            .map((id) => [id, { keep: true as const }]),
+        ]),
       };
     },
     done_set: async ({ threadId, done }) => {
