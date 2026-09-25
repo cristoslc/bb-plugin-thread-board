@@ -29,7 +29,28 @@ ours. Two candidate shapes:
    "what is done." Only worth it if the archive column proves insufficient.
 
 Update: the operator does want the separation — Done is a distinct lane from
-Archived, so **shape 2 is the chosen direction**. Done becomes plugin-owned
+Archived, so **shape 2 is the chosen direction** — but see the Done-as-tag
+section below, which may satisfy it without a plugin database at all.
+
+### View preferences are also server-relevant state
+
+The README's "persists per client in localStorage" line is a symptom of the
+same issue the operator flagged: group/filter/search selections are relevant
+state that lives per browser. Deck keeps grouping, sort, search text, and
+folded groups server-side so state follows the operator between the desktop
+app and a browser. Whatever storage Done lands in (plugin DB or tags), the
+same server-side route should take the view preferences, retiring
+localStorage except for genuinely device-local things (the thread pane width,
+which Deck also keeps per device on purpose).
+
+### README correction
+
+"Reads bb's live thread view … and makes no server-side writes" is neither
+true (the board already writes pin state and Unread drops through bb's native
+sidebar actions, and will write Done state) nor useful. Reword to name what
+the board owns: it makes no writes *to thread content* — reads everything
+else live, writes pins/marks/Done through bb's own stores, and keeps nothing
+of its own except the small state it declares. Done becomes plugin-owned
 state: a plugin database table keyed by thread ID, marked from a card action,
 clearable, and surviving while the thread itself stays active in bb. That
 makes this plugin the source of truth for "done," while bb stays the source
@@ -64,11 +85,73 @@ override ("keep this one forever" / pin-within-Done) protects threads you want
 to hold past the threshold; without it, a sweep that archives your reference
 thread once is the last time anyone uses the feature.
 
+### Sweep refinement (operator direction)
+
+The sweep deserves its own musing, but the operator confirmed the direction
+and added three points:
+
+- **Graphical pre-sweep indication.** Cards that would be swept (Done ≥
+  threshold) should be visibly marked *before* the click — a fade, a tick
+  fringe, or a "sweeps in N days" chip on the card. The button count then
+  confirms what the eye already sees; nothing in the sweep is a surprise.
+- **Sweep also applies to the "Awhile ago" column.** The idle-aging bucket
+  (newest-first idle buckets are part of the board's Attention grouping) is
+  the same "old and quiet" signal from the other side: a thread idle for
+  ages *and* not Done should be sweep-eligible too, or the sweep only cleans
+  up the threads you bothered to mark. That widens the sweep from "archive
+  old Done" to "archive old Done + long-idle," which makes the override
+  valve more important, since long-idle includes threads someone simply
+  hasn't closed out.
+- **Override safety valve confirmed.** Per-card keep-past-threshold stands,
+  and given the widened sweep it likely needs to apply to idle-aging cards
+  too, not just Done ones.
+
 Open question: does the sidebar thread view expose `archivedAt` (or last
 activity) for Done cards to age against — or does the sweep age from the
 *done-marked* timestamp instead? Marking time is the simpler and more
 predictable basis: "Done a week ago" is about your attention, not the
 thread's last flicker. Lean: age from the done-marked timestamp.
+
+## Is Done a thread-tag in practice?
+
+Maybe the best version yet. The thread-tags plugin already stores freeform
+tags server-side, keyed by thread, shared across clients, with a CLI
+(`bb thread-tags add/threads`) agents can write too. Storing Done as a tag
+(even a reserved single-value one, N = 1) means:
+
+- **All clients render it with zero new server surface.** No plugin database,
+  no sync story — the tags store *is* the server-side state.
+- **The done-marked timestamp comes free-ish**: the tags registry records
+  first-seen dates per tag, and a tag set can carry a stamped form
+  (`done:2026-09-25`) instead of a bare `done` — the tag itself is the record.
+- **Agents can mark threads done** via the existing CLI, closing half the
+  agent-tools gap from the comparison without shipping our own tool.
+- **`bb thread-tags threads done` is the sweep's query**, before any CLI of
+  our own.
+
+What tags do *not* give us: the override flag (keep past threshold) would be
+a second reserved tag (`done:keep`); the sweep ordering; a migration-proof
+schema. And the card action now depends on the thread-tags plugin being
+installed, or we write the tag through its RPC/CLI rather than owning the
+storage. That dependency is real but mild: tags are a bb-side convention
+other surfaces already read, and a Done marker that the tags panel, the
+registry, and agents can all see is arguably *more* honest than a private
+table.
+
+Open design points if Done-as-tag wins:
+
+- Reserved-tag naming: `done` alone, or `done:<ISO date>` stamped at mark
+  time? Stamped is self-aging; bare `done` needs the registry's first-seen
+  date, which is weaker provenance.
+- Do we reserve the tag namespace (`done:*`, `done:keep`) and document it, or
+  treat Done as an ordinary tag that merely renders specially on the board?
+- Does the board *write* through `bb thread-tags` (CLI from host) or the
+  thread-tags plugin's RPC? CLI is simplest; RPC avoids shelling out.
+
+Lean: Done-as-tag with a stamped form (`done:YYYY-MM-DD`), reserved `done:*`
+namespace, board writes via RPC if available and CLI as fallback. The plugin
+database then holds nothing for Done — it holds, at most, sweep/override
+bookkeeping if tags prove insufficient.
 
 ## Is a CLI command useful here?
 
