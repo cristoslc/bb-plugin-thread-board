@@ -64,7 +64,7 @@ function readStoredList(key: string): string[] {
 }
 
 function BoardPage() {
-  const { status, threads, projects, sections } = experimental_useSidebarThreads();
+  const { status, threads, projects } = experimental_useSidebarThreads();
   const actions = experimental_useSidebarThreadActions();
   const { providers } = experimental_useProviders();
   const navigate = useBbNavigate();
@@ -129,7 +129,9 @@ function BoardPage() {
   }, [sdk, archiveTick]);
 
   const [groupBy, setGroupBy] = useState<GroupBy>(() =>
-    readStored(GROUP_BY_KEY, ["none", "status", "recency", "project", "provider", "section", "environment"], "status"),
+    // "section"/"environment" were dropped in 0.1.4; stale stored values fall
+    // back to the default below.
+    readStored(GROUP_BY_KEY, ["none", "status", "recency", "project", "provider", "machine"], "status"),
   );
   const [filter, setFilter] = useState<FilterState>(() => ({
     projects: new Set(readStoredList(`${FILTER_KEY}:projects`)),
@@ -198,8 +200,8 @@ function BoardPage() {
     if (openThreadId !== null && frozenColumn !== null && frozenColumn.threadId === openThreadId) {
       frozen.set(frozenColumn.threadId, frozenColumn.column);
     }
-    return buildColumns(searched, groupBy, { projects, sections, providers }, frozen, doneIds);
-  }, [searched, groupBy, projects, sections, providers, openThreadId, frozenColumn, doneIds]);
+    return buildColumns(searched, groupBy, { projects, providers }, frozen, doneIds);
+  }, [searched, groupBy, projects, providers, openThreadId, frozenColumn, doneIds]);
 
   const anyFilterActive =
     filter.projects.size > 0 || filter.providers.size > 0 || filter.states.size > 0 || searchActive;
@@ -252,11 +254,11 @@ function BoardPage() {
           ? null
           : {
               threadId,
-              column: columnFor(thread, groupBy, { projects, sections, providers }),
+              column: columnFor(thread, groupBy, { projects, providers }),
             },
       );
     },
-    [threads, groupBy, projects, sections, providers],
+    [threads, groupBy, projects, providers],
   );
 
   const closeThreadPane = useCallback(() => {

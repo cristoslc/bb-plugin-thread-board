@@ -133,7 +133,6 @@ describe("matchesFilter", () => {
 describe("columnFor", () => {
   const context = {
     projects: [{ id: "proj_a", name: "Alpha", isPersonal: false, href: "", settingsHref: "" }],
-    sections: [],
     providers: [{ id: "pi", displayName: "Pi" }],
   };
 
@@ -170,10 +169,42 @@ describe("GROUP_BY_OPTIONS", () => {
   });
 });
 
+describe("machine grouping", () => {
+  const context = { projects: [], providers: [] };
+
+  it("names columns after the thread's host, resolved from the payload", () => {
+    expect(columnFor(thread({ host: { id: "host_1", name: "Desktop" } }), "machine", context)).toEqual({
+      id: "host_1",
+      label: "Desktop",
+    });
+  });
+
+  it("parks threads without a known host under No machine", () => {
+    expect(columnFor(thread({}), "machine", context)).toEqual({ id: "none", label: "No machine" });
+  });
+
+  it("builds one column per machine", () => {
+    const columns = buildColumns(
+      [
+        thread({ id: "a", host: { id: "host_1", name: "Desktop" }, updatedAt: DAY }),
+        thread({ id: "b", host: { id: "host_1", name: "Desktop" }, updatedAt: 2 * DAY }),
+        thread({ id: "c", host: { id: "host_2", name: "Laptop" }, updatedAt: 3 * DAY }),
+        thread({ id: "d", updatedAt: 4 * DAY }),
+      ],
+      "machine",
+      context,
+    );
+    expect(columns.map((column) => [column.label, column.threads.length])).toEqual([
+      ["Desktop", 2],
+      ["Laptop", 1],
+      ["No machine", 1],
+    ]);
+  });
+});
+
 describe("buildColumns", () => {
   const context = {
     projects: [],
-    sections: [],
     providers: [],
   };
 

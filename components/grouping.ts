@@ -6,16 +6,14 @@ export type GroupBy =
   | "recency"
   | "project"
   | "provider"
-  | "section"
-  | "environment";
+  | "machine";
 
 export const GROUP_BY_OPTIONS: readonly { value: GroupBy; label: string }[] = [
   { value: "status", label: "Attention" },
   { value: "recency", label: "Last activity" },
   { value: "project", label: "Project" },
   { value: "provider", label: "Provider" },
-  { value: "section", label: "Section" },
-  { value: "environment", label: "Environment" },
+  { value: "machine", label: "Machine" },
   { value: "none", label: "None" },
 ];
 
@@ -38,7 +36,6 @@ export interface BoardColumn {
 
 export interface GroupingContext {
   projects: readonly PluginSidebarProject[];
-  sections: readonly { id: string; name: string }[];
   providers: readonly { id: string; displayName?: string }[];
 }
 
@@ -160,11 +157,14 @@ export function columnFor(
     const age = now - thread.updatedAt;
     return ageBucketFor(age, AGE_BUCKETS);
   }
-  let key: string;
-  if (groupBy === "project") key = thread.projectId;
-  else if (groupBy === "provider") key = thread.providerId;
-  else if (groupBy === "section") key = thread.sectionId ?? "";
-  else key = thread.environment?.id ?? "";
+  // Machine comes from the thread payload itself: the SDK resolves the host's
+  // display name for us, so no context lookup is needed.
+  if (groupBy === "machine") {
+    return thread.host
+      ? { id: thread.host.id, label: thread.host.name }
+      : { id: "none", label: "No machine" };
+  }
+  const key = groupBy === "project" ? thread.projectId : thread.providerId;
   const label = labelFor(groupBy, key, context);
   return { id: key === "" ? "none" : key, label };
 }
@@ -173,14 +173,7 @@ function labelFor(groupBy: GroupBy, key: string, context: GroupingContext): stri
   if (groupBy === "project") {
     return context.projects.find((project) => project.id === key)?.name ?? "Unknown project";
   }
-  if (groupBy === "provider") {
-    return context.providers.find((entry) => entry.id === key)?.displayName ?? key;
-  }
-  if (groupBy === "section") {
-    if (key === "") return "No section";
-    return context.sections.find((section) => section.id === key)?.name ?? "Unknown section";
-  }
-  return key === "" ? "No environment" : "Environment";
+  return context.providers.find((entry) => entry.id === key)?.displayName ?? key;
 }
 
 /** Column display order: fixed lanes first (where applicable), then others. */

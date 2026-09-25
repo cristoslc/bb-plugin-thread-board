@@ -11,8 +11,8 @@ A kanban board of your bb threads with Kepler-style grouping and filtering.
 ## What it does
 
 - **Group** threads into columns by Attention (attention-priority lanes,
-  then recency-decayed idle lanes), Last activity, Project, Provider, Section,
-  Environment, or None (one flat column).
+  then recency-decayed idle lanes), Last activity, Project, Provider, Machine
+  (which bb host the thread runs on), or None (one flat column).
 - **Filter** by project, provider, and thread state (Working / Needs you /
   Unread / Idle).
 - **Search** across thread titles and ids.
