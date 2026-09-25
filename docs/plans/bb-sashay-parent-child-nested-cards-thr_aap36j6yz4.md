@@ -241,3 +241,10 @@ Typecheck gate: `npx tsc --noEmit` must pass alongside `npm test`.
 6. Hidden children never render (board aligned with the sidebar's exclusion).
 7. Column header counts exclude nested children.
 8. `npm test` and `npx tsc --noEmit` pass.
+## Amendments
+
+- 2026-09-25 (code review finding 5): the `+N more` chip is **per-child**, as
+  decision 3 reads, not an aggregate at the end of the child list as "What
+  ships" wording suggested. Each level-1 child row with grandchildren shows
+  its own inline `+N` chip (N = `grandchildCountFor(child, …)`), and clicking
+  it opens that child's pane. The end-of-list aggregate chip is removed.

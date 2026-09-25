@@ -53,4 +53,4 @@ added, per-child depth cap, provider corner).
 
 Gates: `npm test` 61 passed (61; was 55), `npx tsc --noEmit` clean.
 
-**Commits in this unit:** (entry commit; code commits follow)
+**Commits in this unit:** ec3bee9 (this entry), 514394a, eb34d10, c929c2f
