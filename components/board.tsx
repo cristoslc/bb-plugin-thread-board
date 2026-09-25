@@ -11,6 +11,10 @@ interface BoardProps {
   columns: readonly BoardColumn[];
   activeThreadId: string | null;
   doneIds: ReadonlySet<string>;
+  /** Parent id → its nested children (already filtered to the visible set). */
+  childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
+  /** Family members that did not match the active filters; rendered dimmed. */
+  dimmedIds: ReadonlySet<string>;
   projectNameFor: (projectId: string) => string;
   onOpenThread: (threadId: string) => void;
   onNewTask: () => void;
@@ -45,6 +49,8 @@ export function Board({
   columns,
   activeThreadId,
   doneIds,
+  childrenByParent,
+  dimmedIds,
   projectNameFor,
   onOpenThread,
   onNewTask,
@@ -122,7 +128,12 @@ export function Board({
                           isDone={doneIds.has(thread.id)}
                           projectName={projectNameFor(thread.projectId)}
                           menuActions={menuActionsFor(thread)}
+                          childThreads={childrenByParent.get(thread.id)}
+                          childrenByParent={childrenByParent}
+                          dimmed={dimmedIds.has(thread.id)}
                           onOpen={() => onOpenThread(thread.id)}
+                          onOpenThread={onOpenThread}
+                          childMenuActions={menuActionsFor}
                         />
                       </li>
                     ))}
