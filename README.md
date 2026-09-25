@@ -43,6 +43,14 @@
 - Cards show state, pin, pending-interaction badge, relative update time,
   title, and branch or host. Click opens the thread; modified-click opens it
   in a new window natively.
+- **Ticket chips**: titles and branches carrying ticket references
+  (`PROJ-123`, `#1284`, GitHub issue/PR URLs) get small chips. Clicking a
+  chip opens the tracker; chips render inert when the project has no
+  GitHub remote.
+- **GitHub status dots** (optional): for numeric refs, the board's server
+  reads the official GitHub plugin's local cache read-only and shows an
+  open/closed/merged dot on matching chips. Without the cache the chips
+  simply render without dots — the board never breaks.
 - Group, filter, and search selections persist per client in localStorage.
 - Works on desktop and phone: columns scroll horizontally on narrow screens,
   and the thread pane goes full-screen.

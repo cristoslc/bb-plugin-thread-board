@@ -6,7 +6,10 @@
 `bb/sashay-tracker-mirroring-ticket-id-detection-lin-thr_ajjsj7f4fm`.
 Empirical finding that reshaped phase 2: the GitHub plugin exposes no RPC
 methods, so status reads its local SQLite cache server-side instead of
-`callRpc` (details below, kept as written at plan time).*
+`callRpc` (details below, kept as written at plan time). Shipped contract
+differs from the sketch below: input is `{ repo, numbers }` (not
+`{ repo, refs }`) and statuses carry `{ kind, state }` only (no
+title/updatedAt — the UI only needed the state dot).*
 
 ## Goal
 
