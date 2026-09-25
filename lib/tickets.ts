@@ -7,6 +7,16 @@
  * for the pattern set and false-positive guards.
  */
 
+/** Resolve a git remote URL to an "owner/repo" slug; null when not GitHub. */
+export function resolveRepoSlug(remote: string | null | undefined): string | null {
+  if (!remote) return null;
+  const https = remote.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
+  if (https) return https[1];
+  const ssh = remote.match(/^git@github\.com:([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  if (ssh) return ssh[1];
+  return null;
+}
+
 export interface TicketRef {
   /** The matched text, e.g. "PROJ-123", "#482". */
   raw: string;
@@ -28,14 +38,18 @@ export interface TicketRefOptions {
 }
 
 // PROJ-123: uppercase key (2+ chars, at least one letter) + hyphen + digits.
-// Anchored with a lookbehind so the key cannot start mid-word, and a
-// trailing boundary so "PROJ-123x" does not swallow the x. The key rule
-// rejects dates (2026-09-25), versions (v1.2.3), and fragments (e2e-4).
+// Anchored with a leading \b word boundary so the key cannot start mid-word,
+// and a trailing \b plus a (?![-\w]) lookahead so "PROJ-123x" and
+// "PROJ-123-4" do not match. The key rule rejects dates (2026-09-25),
+// versions (v1.2.3), and fragments (e2e-4).
 const KEY_REF = /\b([A-Z][A-Z0-9]*[A-Z]|[A-Z][A-Z0-9]{1,})-(\d+)\b(?![-\w])/g;
 
-// #1234: hash + digits, not glued to a word character on the left and not
-// another hash. GitHub issue numbers start at 1, so #0 is rejected below.
-const HASH_REF = /(^|[^#\w])#(\d+)/g;
+// #1234: hash + digits, with a lookbehind rejecting hashes glued to letters
+// or another hash ("abc#12", "##12") while still matching adjacent glued
+// forms like "#12#13" (the digit of the previous ref is a legal lead-in).
+// The match consumes only "#digits". GitHub issue numbers start at 1, so
+// #0 is rejected below.
+const HASH_REF = /(?<![#a-zA-Z])#(\d+)/g;
 
 // Full GitHub issue/PR URLs. The trailing fragment is allowed in the text
 // but not captured into the ref.
@@ -70,18 +84,18 @@ export function findTicketRefs(title: string, options: TicketRefOptions = {}): T
     }
 
     for (const match of text.matchAll(KEY_REF)) {
-      // Trailing-boundary check: \b after digits already fails on "123x"
-      // (digit→letter is a word-internal transition), so matchAll handles
-      // it; nothing extra needed here.
+      // Trailing boundary: \b already fails on "123x" (digit→letter is
+      // word-internal), but it passes between a digit and a hyphen, so the
+      // (?![-\w]) lookahead is what rejects "PROJ-123-4". Keep both.
       const [raw, key] = match;
       pushUnique(refs, { raw, tracker: "generic", key });
     }
 
     for (const match of text.matchAll(HASH_REF)) {
-      const num = Number(match[2]);
+      const num = Number(match[1]);
       if (num === 0) continue; // GitHub numbers start at 1.
       pushUnique(refs, {
-        raw: `#${match[2]}`,
+        raw: `#${match[1]}`,
         tracker: "github",
         number: num,
         ...(base ? { href: `${base}/issues/${num}` } : {}),

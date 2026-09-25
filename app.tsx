@@ -212,6 +212,34 @@ function BoardPage() {
     // back to the default below.
     readStored(GROUP_BY_KEY, ["none", "status", "recency", "project", "provider", "machine"], "status"),
   );
+  // GitHub repo base per project, for ticket-chip link-outs. Best-effort:
+  // a failed or non-GitHub lookup just means chips render without links.
+  const [repoBaseByProject, setRepoBaseByProject] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    sdk.projects
+      .list()
+      .then(
+        (projectList) => {
+          if (cancelled) return;
+          const next: Record<string, string> = {};
+          for (const project of projectList) {
+            const remote = project.gitRemoteUrl;
+            const match = remote?.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)/);
+            if (match) next[project.id] = `https://github.com/${match[1]}`;
+          }
+          setRepoBaseByProject(next);
+        },
+        () => {}, // Link-out is optional; the board works without it.
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk]);
+  const repoBaseFor = useCallback(
+    (projectId: string): string | null => repoBaseByProject[projectId] ?? null,
+    [repoBaseByProject],
+  );
   const [filter, setFilter] = useState<FilterState>(() => ({
     projects: new Set(readStoredList(`${FILTER_KEY}:projects`)),
     providers: new Set(readStoredList(`${FILTER_KEY}:providers`)),
@@ -492,6 +520,7 @@ function BoardPage() {
             projectNameFor={(projectId) =>
               projects.find((project) => project.id === projectId)?.name ?? "Personal"
             }
+            repoBaseFor={repoBaseFor}
             onOpenThread={openThreadCard}
             onNewTask={() => actions.openNewThread({ focusPrompt: true })}
             sweepCandidatesFor={sweepCandidatesFor}

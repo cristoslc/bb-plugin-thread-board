@@ -22,6 +22,8 @@ interface BoardProps {
   /** Family members that did not match the active filters; rendered dimmed. */
   dimmedIds: ReadonlySet<string>;
   projectNameFor: (projectId: string) => string;
+  /** GitHub repo base per project ("https://github.com/owner/repo"), when known. */
+  repoBaseFor: (projectId: string) => string | null;
   onOpenThread: (threadId: string) => void;
   onNewTask: () => void;
   /** Drop a card onto the Done column. */
@@ -118,6 +120,7 @@ export function Board({
   childCountByParent,
   dimmedIds,
   projectNameFor,
+  repoBaseFor,
   onOpenThread,
   onNewTask,
   onDropDone,
@@ -222,6 +225,7 @@ export function Board({
                           isDone={doneIds.has(thread.id)}
                           isSweepHighlighted={armedSet?.has(thread.id) ?? false}
                           projectName={projectNameFor(thread.projectId)}
+                          repoHrefBase={repoBaseFor(thread.projectId) ?? undefined}
                           menuActions={menuActionsFor(thread)}
                           childThreads={nestedChildrenByParent.get(thread.id)}
                           childCount={childCountByParent.get(thread.id) ?? 0}

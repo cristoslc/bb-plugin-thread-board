@@ -2,6 +2,8 @@ import { type ReactNode, useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { findTicketRefs, resolveRepoSlug, type TicketRef } from "@/lib/tickets";
+import type { GitHubItemStatus } from "@/lib/tracker-status";
 import { threadState } from "./grouping";
 import { grandchildCountFor } from "./nesting";
 import { ThreadCardMenu, type CardMenuAction } from "./thread-card-menu";
@@ -41,6 +43,10 @@ interface ThreadCardProps {
   /** Highlighted because a sweep armed in this column captured the card. */
   isSweepHighlighted?: boolean;
   projectName: string;
+  /** GitHub repo base for the thread's project, when it has one. */
+  repoHrefBase?: string;
+  /** GitHub cache status lookup (repo slug + number), when wired. */
+  statusFor?: (repo: string | null, number: number | undefined) => GitHubItemStatus | undefined;
   menuActions?: readonly CardMenuAction[];
   /** Children that render as nested rows beneath this card, in display order. */
   childThreads?: readonly PluginSidebarThread[];
@@ -60,6 +66,34 @@ interface ThreadCardProps {
   onOpenThread?: (threadId: string) => void;
   /** Right-click menu actions for a nested child thread. */
   childMenuActions?: (thread: PluginSidebarThread) => readonly CardMenuAction[];
+}
+
+/** Chip state-dot colors, mirroring the card's own state language. */
+const STATUS_DOT_CLASS: Record<string, string> = {
+  OPEN: "bg-emerald-500",
+  MERGED: "bg-purple-500",
+  CLOSED: "bg-muted-foreground/50",
+};
+
+/** Small clickable ticket chip; inert (span) when the ref has no href. */
+function TicketChip({ ref: ticket }: { ref: TicketRef }) {
+  const className = cn(
+    "inline-flex h-4 items-center rounded bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground",
+    ticket.href && "hover:bg-accent hover:text-foreground",
+  );
+  return ticket.href ? (
+    <a
+      href={ticket.href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className={className}
+    >
+      {ticket.raw}
+    </a>
+  ) : (
+    <span className={className}>{ticket.raw}</span>
+  );
 }
 
 function ChildRow({
@@ -128,6 +162,7 @@ export function ThreadCard({
   doneIds,
   isSweepHighlighted = false,
   projectName,
+  repoHrefBase,
   menuActions,
   childThreads,
   childCount,
@@ -141,6 +176,11 @@ export function ThreadCard({
   const now = Date.now();
   const [collapsed, setCollapsed] = useState(false);
   const branch = thread.environment?.branchName ?? thread.host?.name ?? "";
+  const ticketRefs = findTicketRefs(thread.displayTitle, {
+    extraText: branch,
+    repoHrefBase,
+  });
+  const repo = repoHrefBase === undefined ? null : resolveRepoSlug(repoHrefBase);
   const children = childThreads ?? [];
   // The chip counts every visible child (prop from the raw family index);
   // fall back to the nested rows when the caller does not supply it.
@@ -211,6 +251,13 @@ export function ThreadCard({
             {projectName}
             {branch === "" ? null : <span className="text-muted-foreground/40"> · {branch}</span>}
           </p>
+          {ticketRefs.length === 0 ? null : (
+            <div className="mt-1 flex flex-wrap gap-1 pl-1.5">
+              {ticketRefs.map((ticket) => (
+                <TicketChip key={ticket.raw} ref={ticket} />
+              ))}
+            </div>
+          )}
         </a>
         {chipCount > 0 ? (
           <div className="flex shrink-0 items-start gap-0.5 py-2 pr-1.5">
