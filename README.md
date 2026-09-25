@@ -26,6 +26,23 @@ live thread view through the plugin SDK's sidebar hooks, so it updates in
 real time and makes no server-side writes. Hidden and archived threads are
 excluded.
 
+## Install
+
+Install straight from GitHub, no clone needed:
+
+```sh
+bb plugin install https://github.com/cristoslc/bb-plugin-thread-board
+```
+
+or pin a version:
+
+```sh
+bb plugin install git:https://github.com/cristoslc/bb-plugin-thread-board@v0.1.4
+```
+
+To update later, run the same install command again (add `--yes` to skip
+the confirmation prompt).
+
 ## Development
 
 ```sh

@@ -17,7 +17,7 @@ const OUT = new URL("../../docs/screenshots/", import.meta.url).pathname;
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  defaultViewport: { width: 2560, height: 1000, deviceScaleFactor: 2 },
+  defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: 2 },
   args: ["--hide-scrollbars"],
 });
 const page = await browser.newPage();
