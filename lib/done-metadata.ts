@@ -21,9 +21,11 @@ export type DoneRecord = { doneAt: string; keep?: boolean };
  * data to paper over.
  */
 export function parseDoneRecord(value: JsonValue | undefined): DoneRecord | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined) return null;
+  if (value === null) return null;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`done metadata: expected object, got ${typeof value}`);
+    const got = Array.isArray(value) ? "array" : typeof value;
+    throw new Error(`done metadata: expected object, got ${got}`);
   }
   const obj = value as { [key: string]: JsonValue };
   const doneAt = obj["doneAt"];

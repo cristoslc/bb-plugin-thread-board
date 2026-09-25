@@ -1,62 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/testing";
-import type { JsonValue } from "@get-bb/plugin-sdk";
-import plugin from "../server";
+import { doneRecordOf, setup } from "./helpers/done-fake-host";
 import { DONE_METADATA_KEY } from "../lib/done-metadata";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 
 const LEGACY_KV_KEY = "done-thread-ids";
-
-/**
- * Fake host with an in-memory metadata namespace, exposed so tests seed
- * legacy KV state and inspect the imported metadata records.
- */
-async function setup(opts: { threads?: string[] } = {}) {
-  const meta = new Map<string, JsonValue>();
-  const host: FakePluginHost = createFakePluginHost({
-    pluginId: "thread-board",
-    sdk: {
-      threads: {
-        list: async () => (opts.threads ?? []).map((id) => ({ id })),
-        getPluginMetadata: async (args: { threadId: string }) =>
-          meta.get(args.threadId) ?? {},
-        updatePluginMetadata: async (args: {
-          threadId: string;
-          set?: Record<string, JsonValue>;
-          remove?: string[];
-        }) => {
-          const current = (meta.get(args.threadId) ?? {}) as Record<string, JsonValue>;
-          const next = { ...current };
-          if (args.set) Object.assign(next, args.set);
-          for (const key of args.remove ?? []) delete next[key];
-          meta.set(args.threadId, next as JsonValue);
-          return next;
-        },
-      },
-    },
-  });
-  await plugin(host.bb);
-  const kvSet = async (key: string, value: unknown) => {
-    await host.bb.storage.kv.set(key, value);
-  };
-  return {
-    host,
-    harness: host.harness,
-    meta,
-    kv: host.bb.storage.kv,
-    kvSet,
-    callRpc: (method: string, input?: unknown) =>
-      host.harness.callRpc(method, input) as Promise<unknown>,
-  };
-}
-
-function doneRecordOf(meta: Map<string, JsonValue>, threadId: string) {
-  const namespace = meta.get(threadId) as Record<string, JsonValue> | undefined;
-  return namespace?.[DONE_METADATA_KEY] as
-    | { doneAt: string; keep?: boolean }
-    | undefined;
-}
-
-const IMPORT_WINDOW_STARTED = Date.now();
 
 describe("migration shim: legacy KV string[] (main's shape)", () => {
   it("imports plain ids into metadata with an import-time doneAt", async () => {
@@ -113,13 +60,16 @@ describe("migration shim: legacy KV record-map (sweep sibling's shape)", () => {
     });
   });
 
-  it("imports a record-map entry missing doneAt with an import-time stamp", async () => {
-    const { callRpc, kvSet, meta } = await setup({ threads: ["thr_a"] });
+  it("fails loud on a record-map entry missing doneAt (never coerces)", async () => {
+    const { callRpc, kvSet } = await setup({ threads: ["thr_a"] });
     await kvSet(LEGACY_KV_KEY, { thr_a: { keep: false } });
-    const before = Date.now();
-    await callRpc("done_list", null);
-    const stamped = Date.parse(doneRecordOf(meta, "thr_a")!.doneAt);
-    expect(stamped).toBeGreaterThanOrEqual(before - 1000);
+    await expect(callRpc("done_list", null)).rejects.toThrow(/doneAt/);
+  });
+
+  it("fails loud on a record-map entry with non-finite doneAt (never coerces)", async () => {
+    const { callRpc, kvSet } = await setup({ threads: ["thr_a"] });
+    await kvSet(LEGACY_KV_KEY, { thr_a: { doneAt: Number.NaN } });
+    await expect(callRpc("done_list", null)).rejects.toThrow(/doneAt/);
   });
 
   it("fails loud on a malformed record-map entry (never coerces)", async () => {
@@ -141,11 +91,9 @@ describe("migration shim: KV lifecycle", () => {
     const { callRpc, kvSet, kv, meta } = await setup({ threads: ["thr_a"] });
     await kvSet(LEGACY_KV_KEY, ["thr_a"]);
     await callRpc("done_list", null);
-    const record = doneRecordOf(meta, "thr_a");
     await callRpc("done_set", { threadId: "thr_a", done: false });
     expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
     expect(doneRecordOf(meta, "thr_a")).toBeUndefined();
-    void record;
   });
 
   it("partial import (legacy ids over multiple runs) converges on the next read", async () => {
@@ -194,5 +142,15 @@ describe("migration shim: ordering", () => {
     expect(await callRpc("done_list", null)).toEqual({
       doneIds: ["thr_new", "thr_old"],
     });
+  });
+
+  it("done_set(false) before the next import is not resurrected by it", async () => {
+    const { callRpc, kvSet, meta } = await setup({ threads: ["thr_a"] });
+    await kvSet(LEGACY_KV_KEY, ["thr_a"]);
+    // Clear before any done_list ran: the write must consume the legacy
+    // state first, so the shim never re-imports the cleared thread.
+    await callRpc("done_set", { threadId: "thr_a", done: false });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(doneRecordOf(meta, "thr_a")).toBeUndefined();
   });
 });

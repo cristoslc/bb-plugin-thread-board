@@ -14,6 +14,7 @@ import {
   stampDone,
   type DoneRecord,
 } from "./lib/done-metadata";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 
 export const rpcContract = defineRpcContract({
   done_list: {
@@ -26,6 +27,9 @@ export const rpcContract = defineRpcContract({
   },
 });
 
+/** Realtime signal after every done write. Payload is { threadId, done }
+ *  (was { count } before the metadata migration); consumers refetch on the
+ *  event rather than reading the payload. */
 const DONE_CHANGED = "done-changed";
 /** Legacy KV key written before the metadata migration. */
 const LEGACY_DONE_KEY = "done-thread-ids";
@@ -33,10 +37,14 @@ const LEGACY_DONE_KEY = "done-thread-ids";
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
 
-  async function readDoneRecord(threadId: string) {
+  async function readDoneRecord(
+    threadId: string,
+  ): Promise<DoneRecord | null> {
+    // getPluginMetadata returns an untyped namespace record; cast to the
+    // JsonValue contract parseDoneRecord validates.
     const namespace = await bb.sdk.threads.getPluginMetadata({ threadId });
-    const value = (namespace as Record<string, unknown>)[DONE_METADATA_KEY];
-    return parseDoneRecord(value as never);
+    const value = (namespace as Record<string, JsonValue>)[DONE_METADATA_KEY];
+    return parseDoneRecord(value);
   }
 
   async function writeDoneRecord(threadId: string, done: boolean) {
@@ -52,10 +60,6 @@ export default async function plugin(bb: BbPluginApi) {
       await bb.sdk.threads.updatePluginMetadata({
         threadId,
         remove: [DONE_METADATA_KEY],
-        // Keep the thread present in its namespace; SDK merge semantics
-        // apply remove after set, and an empty set is a no-op remove-only
-        // update.
-        set: {},
       });
     }
   }
@@ -67,11 +71,15 @@ export default async function plugin(bb: BbPluginApi) {
    * per-thread metadata, then delete the key: metadata is the only store
    * from here on. Checks each thread's existing record first, so a
    * partial import converges on the next read and the key is deleted only
-   * once every entry is imported.
+   * once every entry is imported. Runs before both done_list and done_set:
+   * a done=false written while the legacy value is still present must not
+   * be resurrected by a later import.
    */
   async function importLegacyDone(): Promise<void> {
     const legacy: unknown = await bb.storage.kv.get(LEGACY_DONE_KEY);
     if (legacy === undefined || legacy === null) return;
+    const keepFlag = (keep: unknown) =>
+      typeof keep === "boolean" && keep ? { keep: true } : {};
     if (Array.isArray(legacy)) {
       // Main's shape: bare thread ids with no age data — stamp at import.
       const iso = new Date().toISOString();
@@ -92,18 +100,27 @@ export default async function plugin(bb: BbPluginApi) {
           );
         }
         const record = entry as { doneAt?: unknown; keep?: unknown };
-        const imported =
-          typeof record.doneAt === "number" && Number.isFinite(record.doneAt)
+        if (
+          !(
+            (typeof record.doneAt === "number" &&
+              Number.isFinite(record.doneAt)) ||
+            (typeof record.doneAt === "string" &&
+              !Number.isNaN(Date.parse(record.doneAt)))
+          )
+        ) {
+          throw new Error(
+            `legacy done records: invalid doneAt for ${JSON.stringify(threadId)}: ${JSON.stringify(record.doneAt)}`,
+          );
+        }
+        const imported: DoneRecord =
+          typeof record.doneAt === "number"
             ? {
                 doneAt: new Date(record.doneAt).toISOString(),
-                ...(typeof record.keep === "boolean" && record.keep
-                  ? { keep: true }
-                  : {}),
+                ...keepFlag(record.keep),
               }
-            : typeof record.doneAt === "string"
-              ? // Done-metadata-era shape already; preserve verbatim.
-                { doneAt: record.doneAt, ...(typeof record.keep === "boolean" && record.keep ? { keep: true } : {}) }
-              : { doneAt: new Date().toISOString() };
+            : // Epoch-free shape already; keep the ISO string as written,
+              // carry keep only when true (DoneRecord's optional keep).
+              { doneAt: record.doneAt, ...keepFlag(record.keep) };
         await importOne(threadId, imported);
       }
     } else {
@@ -137,6 +154,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     done_list: async () => ({ doneIds: await listDoneIds() }),
     done_set: async ({ threadId, done }) => {
+      // Consume any legacy KV state before the first metadata write, or a
+      // later import could resurrect state this write just changed.
+      await importLegacyDone();
       await writeDoneRecord(threadId, done);
       bb.realtime.publish(DONE_CHANGED, { threadId, done });
       return { done };

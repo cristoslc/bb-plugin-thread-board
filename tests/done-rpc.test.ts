@@ -1,60 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/testing";
-import type { JsonValue } from "@get-bb/plugin-sdk";
-import plugin from "../server";
+import { doneRecordOf, setup } from "./helpers/done-fake-host";
 import { DONE_METADATA_KEY } from "../lib/done-metadata";
 
-type SetupOptions = {
-  /** Thread ids the stubbed threads.list returns (live threads). */
-  threads?: string[];
-};
-
-/**
- * Fake host + in-memory metadata namespace standing in for the bb server's
- * thread plugin metadata store. Stubs implement the merge/remove semantics
- * the real SDK documents for updatePluginMetadata.
- */
-async function setup(opts: SetupOptions = {}) {
-  const meta = new Map<string, JsonValue>();
-  const host: FakePluginHost = createFakePluginHost({
-    pluginId: "thread-board",
-    sdk: {
-      threads: {
-        list: async () => (opts.threads ?? []).map((id) => ({ id })),
-        getPluginMetadata: async (args: { threadId: string }) =>
-          meta.get(args.threadId) ?? {},
-        updatePluginMetadata: async (args: {
-          threadId: string;
-          set?: Record<string, JsonValue>;
-          remove?: string[];
-        }) => {
-          const current = (meta.get(args.threadId) ?? {}) as Record<string, JsonValue>;
-          const next = { ...current };
-          if (args.set) Object.assign(next, args.set);
-          for (const key of args.remove ?? []) delete next[key];
-          meta.set(args.threadId, next as JsonValue);
-          return next;
-        },
-      },
-    },
-  });
-  await plugin(host.bb);
-  return {
-    host,
-    harness: host.harness,
-    meta,
-    callRpc: (method: string, input?: unknown) =>
-      host.harness.callRpc(method, input) as Promise<unknown>,
-    doneCalls: () =>
-      host.harness.inspection.sdk.callsTo("threads.updatePluginMetadata"),
-  };
-}
-
-function doneRecordOf(meta: Map<string, JsonValue>, threadId: string) {
-  const namespace = meta.get(threadId) as Record<string, JsonValue> | undefined;
-  return namespace?.[DONE_METADATA_KEY] as
-    | { doneAt: string; keep?: boolean }
-    | undefined;
+function doneCalls(host: Awaited<ReturnType<typeof setup>>["host"]) {
+  return host.harness.inspection.sdk.callsTo("threads.updatePluginMetadata");
 }
 
 describe("done_set over plugin metadata", () => {
@@ -111,9 +60,9 @@ describe("done_set over plugin metadata", () => {
   });
 
   it("clearing issues a remove: [\"done\"] update", async () => {
-    const { callRpc, doneCalls } = await setup({ threads: ["thr_a"] });
+    const { callRpc, host } = await setup({ threads: ["thr_a"] });
     await callRpc("done_set", { threadId: "thr_a", done: false });
-    const args = doneCalls()[0][0] as { threadId: string; remove?: string[] };
+    const args = doneCalls(host)[0][0] as { threadId: string; remove?: string[] };
     expect(args.threadId).toBe("thr_a");
     expect(args.remove).toEqual([DONE_METADATA_KEY]);
   });
