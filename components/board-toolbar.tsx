@@ -14,7 +14,9 @@ interface DropdownOption {
 /**
  * Linear-model dropdown: clicking a row's label applies it as the single
  * selection (and closes); a checkbox appears in the left margin on hover to
- * add the row to a multi-selection without closing.
+ * add the row to a multi-selection without closing. Pass `exclusive` when
+ * selections are mutually exclusive: rows replace, never add — no add
+ * checkboxes and no Clear row.
  */
 interface MultiSelectDropdownProps {
   label: string;
@@ -22,9 +24,13 @@ interface MultiSelectDropdownProps {
   selected: ReadonlySet<string>;
   options: readonly DropdownOption[];
   summaryFor: (selected: ReadonlySet<string>) => string;
-  onToggle: (value: string) => void;
+  /** Omit when `exclusive`: there is nothing to add a row to. */
+  onToggle?: (value: string) => void;
   onSingleSelect: (value: string) => void;
-  onClear: () => void;
+  /** Omit when `exclusive`: picking another row replaces the selection. */
+  onClear?: () => void;
+  /** Selections are mutually exclusive (e.g. the Group control). */
+  exclusive?: boolean;
   footer?: React.ReactNode;
 }
 
@@ -37,6 +43,7 @@ function MultiSelectDropdown({
   onToggle,
   onSingleSelect,
   onClear,
+  exclusive = false,
   footer,
 }: MultiSelectDropdownProps) {
   const [open, setOpen] = useState(false);
@@ -93,36 +100,39 @@ function MultiSelectDropdown({
                       ) : null}
                     </button>
                     {/* Hover checkbox in the left margin: adds to the
-                        multi-selection without closing the menu. */}
-                    <span
-                      role="checkbox"
-                      aria-checked={isSelected}
-                      aria-label={`Add ${option.label} to selection`}
-                      tabIndex={isSelected ? -1 : 0}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onToggle(option.value);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === " " || event.key === "Enter") {
-                          event.preventDefault();
+                        multi-selection without closing the menu. Exclusive
+                        controls hide it — picking a row replaces. */}
+                    {!exclusive ? (
+                      <span
+                        role="checkbox"
+                        aria-checked={isSelected}
+                        aria-label={`Add ${option.label} to selection`}
+                        tabIndex={isSelected ? -1 : 0}
+                        onClick={(event) => {
                           event.stopPropagation();
-                          onToggle(option.value);
-                        }
-                      }}
-                      className={cn(
-                        "absolute left-1.5 top-1/2 flex size-3.5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-[3px] border",
-                        "opacity-0 transition-opacity group-hover/option:opacity-100",
-                        "bg-background",
-                        isSelected
-                          ? "opacity-100 border-primary bg-primary text-primary-foreground"
-                          : "border-muted-foreground/50 hover:border-foreground",
-                      )}
-                    >
-                      {isSelected ? (
-                        <Icon name="Check" className="size-2.5" aria-hidden />
-                      ) : null}
-                    </span>
+                          onToggle?.(option.value);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === " " || event.key === "Enter") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onToggle?.(option.value);
+                          }
+                        }}
+                        className={cn(
+                          "absolute left-1.5 top-1/2 flex size-3.5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-[3px] border",
+                          "opacity-0 transition-opacity group-hover/option:opacity-100",
+                          "bg-background",
+                          isSelected
+                            ? "opacity-100 border-primary bg-primary text-primary-foreground"
+                            : "border-muted-foreground/50 hover:border-foreground",
+                        )}
+                      >
+                        {isSelected ? (
+                          <Icon name="Check" className="size-2.5" aria-hidden />
+                        ) : null}
+                      </span>
+                    ) : null}
                   </li>
                 );
               })}
@@ -130,7 +140,7 @@ function MultiSelectDropdown({
             {footer !== undefined ? (
               <div className="mt-1 border-t border-border pt-1">{footer}</div>
             ) : null}
-            {selected.size > 0 ? (
+            {onClear !== undefined && selected.size > 0 ? (
               <div className="mt-1 border-t border-border pt-1">
                 <button
                   type="button"
@@ -304,15 +314,15 @@ export function BoardToolbar({
     .sort((a, b) => a.label.localeCompare(b.label));
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+      {/* Mutually exclusive: picking a grouping replaces the current one. */}
       <MultiSelectDropdown
+        exclusive
         label="Group"
         icon="SlidersHorizontal"
         selected={new Set([groupBy])}
         options={groupOptions}
         summaryFor={() => GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label ?? groupBy}
-        onToggle={() => {}}
         onSingleSelect={(value) => onGroupByChange(value as GroupBy)}
-        onClear={() => {}}
       />
       <ProjectDropdown
         projects={projects.filter((project) => projectIds.has(project.id) || !project.isPersonal)}
