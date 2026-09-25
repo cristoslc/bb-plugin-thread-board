@@ -8,6 +8,7 @@ import type {
 } from "./grouping";
 import {
   STATUS_COLUMN_ORDER,
+  buildColumns,
   columnFor,
   matchesFilter,
   threadState,
@@ -26,6 +27,53 @@ export interface NestingResult {
   columns: BoardColumn[];
   /** Parent id → the live children that render nested under its card. */
   childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
+}
+
+export interface BoardAssembly {
+  columns: BoardColumn[];
+  /** Parent id → children that render as nested rows under the parent card. */
+  nestedChildrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
+  /**
+   * Parent id → ALL its visible children, from the raw family index. Drives
+   * the parent card's child-count chip (and chevron), which counts every
+   * visible child even when some render standalone (promoted / cross-axis).
+   */
+  childCountByParent: ReadonlyMap<string, number>;
+}
+
+/**
+ * The full columns-plus-nesting assembly the board renders, in one call — the
+ * composition app.tsx wires. `nestedChildrenByParent` (from
+ * `nestUnderParents`, NOT the raw index) is what renders as child rows, so a
+ * promoted or cross-axis child never appears both as a standalone card and as
+ * a nested row. `childCountByParent` (from the raw index) is what the
+ * child-count chip counts, so a parent still shows its family size when a
+ * child stands alone.
+ */
+export function assembleBoard(
+  threads: readonly PluginSidebarThread[],
+  groupBy: GroupBy,
+  context: GroupingContext,
+  frozenColumns: ReadonlyMap<string, { id: string; label: string }> = new Map(),
+  doneIds: ReadonlySet<string> = new Set(),
+  now: number = Date.now(),
+): BoardAssembly {
+  const nested = nestUnderParents(
+    buildColumns(threads, groupBy, context, frozenColumns, doneIds, now),
+    threads,
+    groupBy,
+    context,
+    now,
+  );
+  const childCountByParent = new Map<string, number>();
+  for (const [parentId, children] of buildFamilyIndex(threads).childrenByParent) {
+    childCountByParent.set(parentId, children.length);
+  }
+  return {
+    columns: nested.columns,
+    nestedChildrenByParent: nested.childrenByParent,
+    childCountByParent,
+  };
 }
 
 export interface FamilyFilterResult {
@@ -178,9 +226,10 @@ export function nestUnderParents(
 
   // A parent whose children all nest keeps its card; children leave the
   // column lists entirely. Only roots (and promoted/flat children) stay.
+  const nestedKeyIds = nestedKeys(nested);
   const outColumns: BoardColumn[] = columns.map((column) => {
     const kept = column.threads.filter(
-      (thread) => !nestedKeys(nested).has(thread.id) && (flatIds.has(thread.id) || index.rootIds.has(thread.id)),
+      (thread) => !nestedKeyIds.has(thread.id) && (flatIds.has(thread.id) || index.rootIds.has(thread.id)),
     );
     return { ...column, threads: kept };
   });

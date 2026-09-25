@@ -9,6 +9,7 @@ import {
   type GroupingContext,
 } from "../components/grouping";
 import {
+  assembleBoard,
   buildFamilyIndex,
   filterFamilies,
   grandchildCountFor,
@@ -89,17 +90,14 @@ describe("buildFamilyIndex", () => {
   });
 
   it("excludes hidden children: caller passes the visible set, hidden never nests", () => {
-    // The caller (app.tsx) filters hidden/archived before calling; the index
-    // built from the visible set must not contain them.
+    // Caller contract: app.tsx filters hidden/archived out before calling, so
+    // this test pins the contract, not the filter itself — the index built
+    // from the visible set must nest only visible children.
     const parent = thread({ id: "p" });
     const visibleChild = thread({ id: "c", parentThreadId: "p" });
-    const hidden = thread({ id: "h", parentThreadId: "p", isHidden: true });
-    const archived = thread({ id: "x", parentThreadId: "p", isArchived: true });
-    const visible = [parent, visibleChild].filter((t) => !t.isHidden && !t.isArchived);
-    expect(visible).not.toContain(hidden);
-    expect(visible).not.toContain(archived);
-    const index = buildFamilyIndex(visible);
+    const index = buildFamilyIndex([parent, visibleChild]);
     expect(ids(index.childrenByParent.get("p"))).toEqual(["c"]);
+    expect(index.rootIds.has("c")).toBe(false);
   });
 });
 
@@ -282,7 +280,6 @@ describe("nestUnderParents — depth cap", () => {
     // The +N chip lives on the level-1 child: its own map entry is the
     // grandchild count. The parent's entry counts level-1 children.
     expect(grandchildCountFor(child, nested.childrenByParent)).toBe(2);
-    expect(grandchildCountFor(nestedChildren[0], nested.childrenByParent)).toBe(2);
   });
 
   it("a level-1 child with no grandchildren carries no chip count", () => {
@@ -293,6 +290,22 @@ describe("nestUnderParents — depth cap", () => {
     const nestedChildren = nested.childrenByParent.get("p") ?? [];
     expect(nestedChildren).toHaveLength(1);
     expect(grandchildCountFor(nestedChildren[0], nested.childrenByParent)).toBe(0);
+  });
+
+  it("per-child chip: each level-1 child reports only its own grandchildren", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const childA = thread({ id: "a", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const childB = thread({ id: "b", parentThreadId: "p", updatedAt: NOW - 3 * HOUR });
+    const gcA1 = thread({ id: "ga1", parentThreadId: "a", updatedAt: NOW - 4 * HOUR });
+    const gcA2 = thread({ id: "ga2", parentThreadId: "a", updatedAt: NOW - 5 * HOUR });
+    const gcB1 = thread({ id: "gb1", parentThreadId: "b", updatedAt: NOW - 6 * HOUR });
+    const threads = [parent, childA, childB, gcA1, gcA2, gcB1];
+    const columns = buildColumns(threads, "status", CONTEXT, new Map(), new Set(), NOW);
+    const nested = nestUnderParents(columns, threads, "status", CONTEXT, NOW);
+    const level1 = nested.childrenByParent.get("p") ?? [];
+    expect(ids(level1)).toEqual(["a", "b"]);
+    expect(grandchildCountFor(level1[0], nested.childrenByParent)).toBe(2);
+    expect(grandchildCountFor(level1[1], nested.childrenByParent)).toBe(1);
   });
 });
 
@@ -357,6 +370,25 @@ describe("filterFamilies", () => {
     expect(result.dimmedIds.has("x")).toBe(false);
   });
 
+  it("composes with provider filters: a same-family cross-provider child still keeps the family", () => {
+    const crossChild = thread({
+      id: "x",
+      parentThreadId: "p",
+      providerId: "other",
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const index = buildFamilyIndex([parent, crossChild]);
+    const result = filterFamilies(
+      [parent, crossChild],
+      index,
+      { projects: new Set(), providers: new Set(["other"]), states: new Set() },
+      "",
+    );
+    expect(result.kept.map((t) => t.id).sort()).toEqual(["p", "x"]);
+    expect(result.dimmedIds.has("p")).toBe(true);
+    expect(result.dimmedIds.has("x")).toBe(false);
+  });
+
   it("unfiltered input passes through undimmed", () => {
     const index = buildFamilyIndex([parent, child]);
     const result = filterFamilies([parent, child], index, EMPTY_FILTER, "");
@@ -397,6 +429,58 @@ describe("family filtering composes with nesting — promotion applied after fil
     expect(nested.childrenByParent.has("p")).toBe(false);
     // parent still renders (dimmed), in its own column
     expect(columnOf(nested.columns, "p")).toBeDefined();
+  });
+});
+
+describe("assembleBoard — the composition app.tsx wires", () => {
+  it("a promoted child renders as a standalone card and NOT as a nested row (no duplication)", () => {
+    const parent = thread({ id: "p", status: "active", updatedAt: NOW - HOUR });
+    const child = thread({
+      id: "c",
+      parentThreadId: "p",
+      hasPendingInteraction: true,
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const result = assembleBoard([parent, child], "status", CONTEXT, new Map(), new Set(), NOW);
+    expect(idsIn(result.columns, "attention")).toContain("c");
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).not.toContain("c");
+    expect(result.nestedChildrenByParent.has("p")).toBe(false);
+    // chip counts from the raw family index, independent of nesting
+    expect(result.childCountByParent.get("p")).toBe(1);
+  });
+
+  it("a cross-axis child renders standalone and NOT nested (no duplication)", () => {
+    const parent = thread({ id: "p", projectId: "proj_a" });
+    const child = thread({
+      id: "c",
+      parentThreadId: "p",
+      projectId: "proj_b",
+      updatedAt: NOW - HOUR,
+    });
+    const result = assembleBoard([parent, child], "project", CONTEXT, new Map(), new Set(), NOW);
+    expect(columnOf(result.columns, "c")?.id).toBe("proj_b");
+    expect(result.nestedChildrenByParent.has("p")).toBe(false);
+    expect(result.childCountByParent.get("p")).toBe(1);
+  });
+
+  it("a nested child appears exactly once: in the nest, not in any column", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const child = thread({ id: "c", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const result = assembleBoard([parent, child], "status", CONTEXT, new Map(), new Set(), NOW);
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["c"]);
+    expect(columnOf(result.columns, "c")).toBeUndefined();
+    expect(result.childCountByParent.get("p")).toBe(1);
+  });
+
+  it("chip vs rows divergence: a promoted-only child counts on the chip but renders zero nested rows", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR }); // idle → done column
+    const child = thread({ id: "c", parentThreadId: "p", isUnread: true, updatedAt: NOW - 2 * HOUR });
+    const doneIds = new Set(["p"]);
+    const result = assembleBoard([parent, child], "status", CONTEXT, new Map(), doneIds, NOW);
+    // promoted (live child of a done parent) → no nested rows under p
+    expect(result.nestedChildrenByParent.has("p")).toBe(false);
+    // …but the parent card still reports its one visible child
+    expect(result.childCountByParent.get("p")).toBe(1);
   });
 });
 
