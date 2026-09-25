@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Thread Board — screenshot harness</title>
+    <style>
+      /* bb's built-in dark theme tokens, extracted from the bb app bundle so
+         the harness renders with the same palette the host supplies. */
+      :root {
+        --canvas: oklch(19.5% 0 0);
+        --ink: oklch(81% 0 0);
+        --background: var(--canvas);
+        --foreground: var(--ink);
+        --card: var(--canvas);
+        --card-foreground: var(--ink);
+        --popover: var(--canvas);
+        --popover-foreground: var(--ink);
+        --primary: oklch(82% 0 0);
+        --primary-foreground: oklch(21.78% 0 0);
+        --muted: color-mix(in oklch, var(--ink) 16%, var(--canvas));
+        --muted-foreground: oklch(78% 0 0);
+        --accent: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+        --accent-foreground: var(--ink);
+        --secondary: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+        --secondary-foreground: var(--ink);
+        --destructive: oklch(56% 0.19 22.1703);
+        --destructive-foreground: oklch(100% 0 0);
+        --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
+        --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
+        --ring: var(--primary);
+        --radius: 0.5rem;
+        --state-active: color-mix(in oklab, var(--ink) 22.5%, transparent);
+        --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
+        --shadow-xs: 0px 2px 0px 0px #0003;
+        --shadow-sm: 0px 2px 0px 0px #0000004d, 0px 1px 2px -1px #0006;
+        --shadow-md: 0px 2px 0px 0px #0000004d, 0px 2px 4px -1px #00000080;
+        --shadow-lg: 0px 2px 0px 0px #0000004d, 0px 4px 6px -1px #00000080;
+        --bb-safe-area-bottom: 0px;
+        --bb-sidebar-row-height: 36px;
+        --bb-sidebar-row-height-coarse: 44px;
+        --bb-drawer-keyboard-inset: 0px;
+      }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        color-scheme: dark;
+      }
+      /* Minimal preflight: the plugin's compiled CSS ships without one because
+         the bb host app already resets elements; the harness must stand in. */
+      #root *,
+      #root *::before,
+      #root *::after {
+        box-sizing: border-box;
+        border: 0 solid;
+      }
+      #root a {
+        color: inherit;
+        text-decoration: inherit;
+      }
+      #root ul,
+      #root ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #root h1,
+      #root h2,
+      #root h3,
+      #root p {
+        margin: 0;
+      }
+      #root button {
+        background: none;
+        font: inherit;
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-bb-plugin="thread-board"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
