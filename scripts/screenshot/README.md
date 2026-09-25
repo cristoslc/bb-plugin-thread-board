@@ -16,7 +16,7 @@ host app involved.
   bb app bundle), a minimal preflight (the plugin's compiled CSS ships
   without one because the host app provides it), and sets
   `data-bb-plugin="thread-board"` so the compiled utilities' scoping matches.
-- `shoot.mjs` — the capture driver (three shots: state board, recency
+- `shoot.mjs` — the capture driver (three shots: attention board, recency
   board, board with the thread pane open).
 
 Regenerate the screenshots:

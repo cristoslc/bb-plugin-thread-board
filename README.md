@@ -2,7 +2,7 @@
 
 A kanban board of your bb threads with Kepler-style grouping and filtering.
 
-![Board grouped by state, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets](docs/screenshots/board-state.png)
+![Board grouped by Attention, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets](docs/screenshots/board-state.png)
 
 ![Last activity grouping: every thread bucketed by age, most recent leftmost](docs/screenshots/board-recency.png)
 
@@ -10,7 +10,8 @@ A kanban board of your bb threads with Kepler-style grouping and filtering.
 
 ## What it does
 
-- **Group** threads into columns by State, Project, Provider, Section,
+- **Group** threads into columns by Attention (attention-priority lanes,
+  then recency-decayed idle lanes), Last activity, Project, Provider, Section,
   Environment, or None (one flat column).
 - **Filter** by project, provider, and thread state (Working / Needs you /
   Unread / Idle).

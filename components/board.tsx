@@ -16,7 +16,7 @@ interface BoardProps {
   onNewTask: () => void;
   /** Drop a card onto the Done column. */
   onDropDone: (threadId: string) => void;
-  /** Drop a card onto the Unread column (State grouping only). */
+  /** Drop a card onto the Unread column (Attention grouping only). */
   onDropUnread: (threadId: string) => void;
   /** Right-click menu actions for one thread, sidebar-menu style. */
   menuActionsFor: (thread: PluginSidebarThread) => readonly CardMenuAction[];
@@ -54,7 +54,7 @@ export function Board({
 }: BoardProps) {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   // Only the Done and Unread lanes accept drops; Unread exists as a column
-  // only in the State grouping.
+  // only in the Attention grouping.
   const dropHandlerFor = (columnId: string): ((threadId: string) => void) | null => {
     if (columnId === "done") return onDropDone;
     if (columnId === "unread") return onDropUnread;

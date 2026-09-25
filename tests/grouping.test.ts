@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
+  GROUP_BY_OPTIONS,
   buildColumns,
   columnFor,
   filterThreads,
@@ -156,6 +157,16 @@ describe("columnFor", () => {
   it("recency grouping buckets every thread by age", () => {
     expect(columnFor(thread({ updatedAt: NOW - 2 * HOUR }), "recency", context, NOW).id).toBe("today");
     expect(columnFor(thread({ updatedAt: NOW - 2 * DAY }), "recency", context, NOW).id).toBe("earlier");
+  });
+});
+
+describe("GROUP_BY_OPTIONS", () => {
+  it("labels the attention-priority grouping Attention, not State", () => {
+    // The grouping orders by claim on your attention; "State" is the filter's
+    // word for what a thread is. The persisted value stays "status".
+    expect(GROUP_BY_OPTIONS.find((option) => option.value === "status")?.label).toBe(
+      "Attention",
+    );
   });
 });
 

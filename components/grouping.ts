@@ -10,7 +10,7 @@ export type GroupBy =
   | "environment";
 
 export const GROUP_BY_OPTIONS: readonly { value: GroupBy; label: string }[] = [
-  { value: "status", label: "State" },
+  { value: "status", label: "Attention" },
   { value: "recency", label: "Last activity" },
   { value: "project", label: "Project" },
   { value: "provider", label: "Provider" },
@@ -70,7 +70,7 @@ export const THREAD_STATE_LABELS: Record<ThreadState, string> = {
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-// Kepler-style age buckets for idle threads (State grouping) and for all
+// Kepler-style age buckets for idle threads (Attention grouping) and for all
 // threads (Last activity grouping). Ordered oldest-first for lookup; the
 // column orders below reverse them so boards read newest-leftmost.
 const AGE_BUCKETS: { id: string; label: string; minAge: number; maxAge: number }[] = [
@@ -206,7 +206,7 @@ export function buildColumns(
   now: number = Date.now(),
 ): BoardColumn[] {
   // Threads marked Done form their own column, always farthest right on the
-  // State board and present (dimmed) on every other grouping.
+  // Attention board and present (dimmed) on every other grouping.
   const active = threads.filter((thread) => !doneIds.has(thread.id));
   const done = threads.filter((thread) => doneIds.has(thread.id));
 
