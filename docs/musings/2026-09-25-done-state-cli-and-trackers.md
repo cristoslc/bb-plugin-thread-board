@@ -32,16 +32,16 @@ Update: the operator does want the separation — Done is a distinct lane from
 Archived, so **shape 2 is the chosen direction** — but see the Done-as-tag
 section below, which may satisfy it without a plugin database at all.
 
-### View preferences are also server-relevant state
+### View preferences are device-local by design (operator correction)
 
-The README's "persists per client in localStorage" line is a symptom of the
-same issue the operator flagged: group/filter/search selections are relevant
-state that lives per browser. Deck keeps grouping, sort, search text, and
-folded groups server-side so state follows the operator between the desktop
-app and a browser. Whatever storage Done lands in (plugin DB or tags), the
-same server-side route should take the view preferences, retiring
-localStorage except for genuinely device-local things (the thread pane width,
-which Deck also keeps per device on purpose).
+The operator pushed back on moving group/filter/search server-side: these
+preferences should stay per client, because different machines and browser
+tabs do different things, and the board should reflect where you are, not a
+single global view. So localStorage here is not a symptom — it is the correct
+scope. Done was never in localStorage (nothing is stored about it today);
+the earlier draft conflated the two. Revised position: pane width *and* view
+preferences are deliberately device-local; the only state that must move
+server-side is Done itself.
 
 ### README correction
 
@@ -88,12 +88,21 @@ thread once is the last time anyone uses the feature.
 ### Sweep refinement (operator direction)
 
 The sweep deserves its own musing, but the operator confirmed the direction
-and added three points:
+and added three points, then refined the interaction model:
 
+- **Two-click arm-then-confirm, modeled on delete patterns.** First click
+  arms the sweep: the button activates (e.g. gains "?"), eligible cards are
+  highlighted visually, and they gather at the top of their column so the
+  blast radius reads at a glance. Second click performs it. The button label
+  extends while armed to say where the swept threads go ("Sweep 6 → Archive").
+  Disarming is the same click path (click again or click away); nothing moves
+  until the second click. This replaces the earlier one-click button; the
+  armed state *is* the graphical pre-sweep indication, concentrated.
 - **Graphical pre-sweep indication.** Cards that would be swept (Done ≥
-  threshold) should be visibly marked *before* the click — a fade, a tick
-  fringe, or a "sweeps in N days" chip on the card. The button count then
-  confirms what the eye already sees; nothing in the sweep is a surprise.
+  threshold, or long-idle) must be identifiable before the second click —
+  highlight plus gather-to-top during the armed state satisfies this; an
+  always-on marker (tick fringe, "sweeps in N days" chip) is a possible
+  refinement so eligibility is visible even when not armed.
 - **Sweep also applies to the "Awhile ago" column.** The idle-aging bucket
   (newest-first idle buckets are part of the board's Attention grouping) is
   the same "old and quiet" signal from the other side: a thread idle for
@@ -105,6 +114,12 @@ and added three points:
 - **Override safety valve confirmed.** Per-card keep-past-threshold stands,
   and given the widened sweep it likely needs to apply to idle-aging cards
   too, not just Done ones.
+
+Sweep candidates worth deciding in the dedicated musing: does arming also
+apply to the Awhile-ago column's sweep separately (two buttons, or one sweep
+across columns)? Does the gather-at-top survive a live thread update arriving
+mid-arm? And where the count/aging comes from when Done is a tag: the stamp
+date on the card, same as the board already renders.
 
 Open question: does the sidebar thread view expose `archivedAt` (or last
 activity) for Done cards to age against — or does the sweep age from the
