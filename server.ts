@@ -21,7 +21,6 @@ import {
 import { DEFAULT_DONE_ARCHIVE_DAYS, DEFAULT_IDLE_ARCHIVE_DAYS } from "./lib/sweep";
 import { readGitHubStatuses } from "./lib/tracker-status";
 import { resolveRepoSlug } from "./lib/tickets";
-
 import type { JsonValue } from "@get-bb/plugin-sdk";
 
 export const rpcContract = defineRpcContract({
@@ -73,8 +72,9 @@ const DONE_CHANGED = "done-changed";
 const LEGACY_DONE_KEY = "done-thread-ids";
 /** Per-thread sweep keep flags, independent of Done marks. */
 const KEEP_KEY = "sweep-keep-flags";
-// The official GitHub plugin's local cache ("mirror, don't integrate":
-// read-only, degrade-to-empty access — see lib/tracker-status.ts).
+
+// time ("mirror, don't integrate": read-only, degrade-to-empty access —
+// see lib/tracker-status.ts).
 const GITHUB_CACHE_DB = ".bb/plugins/github/data.db";
 
 type KeepStore = Record<string, true>;
@@ -288,7 +288,7 @@ export default async function plugin(bb: BbPluginApi) {
     tracker_status: async ({ repo, numbers }) => {
       const home = process.env.HOME ?? "";
       if (home === "") return { statuses: {} };
-      const statuses = readGitHubStatuses(`${home}/${GITHUB_CACHE_DB}`, repo, numbers);
+      const statuses = readGitHubStatuses(`${home}/${GITHUB_CACHE_DB}`, repo, numbers, bb.log);
       return { statuses };
     },
     sweep_config_get: async () => {

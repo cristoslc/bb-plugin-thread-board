@@ -15,7 +15,9 @@
 import Database from "better-sqlite3";
 
 export interface GitHubItemStatus {
+  /** The plugin cache's item type: "issue" or "pull". */
   kind: string;
+  /** GitHub's raw state string: OPEN, CLOSED, or MERGED. */
   state: string;
 }
 
@@ -23,11 +25,14 @@ export interface GitHubItemStatus {
  * Look up statuses for `numbers` in `repo` from a GitHub-plugin-shaped
  * cache DB. Missing file/table/rows all yield an empty result — callers
  * treat this as "no status known", never as an error.
+ *
+ * The optional logger receives warnings for unexpected (non-SQLite) errors.
  */
 export function readGitHubStatuses(
   dbPath: string,
   repo: string,
   numbers: readonly number[],
+  log?: { warn?: (message: string, error: unknown) => void },
 ): Record<number, GitHubItemStatus> {
   if (numbers.length === 0) return {};
   try {
@@ -45,8 +50,11 @@ export function readGitHubStatuses(
     } finally {
       db.close();
     }
-  } catch {
-    // No cache, unreadable file, or reshaped schema: no status is known.
+  } catch (error) {
+    // Documented degrade paths: no cache file, unreadable file, reshaped
+    // schema. Anything else is a bug — surface it, then still degrade so
+    // the board never breaks.
+    if (!(error instanceof Database.SqliteError)) log?.warn?.("tracker-status: unexpected cache read failure", error);
     return {};
   }
 }

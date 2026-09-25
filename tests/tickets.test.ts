@@ -77,6 +77,18 @@ describe("findTicketRefs — #N hash refs", () => {
     expect(findTicketRefs("issue #0")).toEqual([]);
   });
 
+  it("resolves hrefs for .git-suffixed remotes (round-trip through slug)", () => {
+    // Regression: remotes ending in .git must produce clean /issues/N hrefs.
+    const slug = resolveRepoSlug("https://github.com/owner/repo.git");
+    expect(findTicketRefs("close #1284", { repoHrefBase: `https://github.com/${slug}` })).toEqual([
+      { raw: "#1284", tracker: "github", number: 1284, href: "https://github.com/owner/repo/issues/1284" },
+    ]);
+  });
+
+  it("matches adjacent glued hash refs (#1#2)", () => {
+    expect(findTicketRefs("fix #12#13").map((ref) => ref.raw)).toEqual(["#12", "#13"]);
+  });
+
   it("does not match hash followed by non-digits", () => {
     expect(findTicketRefs("use #tag and ## in md")).toEqual([]);
   });

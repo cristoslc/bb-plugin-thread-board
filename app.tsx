@@ -215,6 +215,8 @@ function BoardPage() {
   );
   // GitHub repo base per project, for ticket-chip link-outs. Best-effort:
   // a failed or non-GitHub lookup just means chips render without links.
+  // Re-runs when the sidebar project list changes (new project, or a
+  // late-arriving remote) so the map is never a stale one-shot snapshot.
   const [repoBaseByProject, setRepoBaseByProject] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
@@ -225,9 +227,8 @@ function BoardPage() {
           if (cancelled) return;
           const next: Record<string, string> = {};
           for (const project of projectList) {
-            const remote = project.gitRemoteUrl;
-            const match = remote?.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)/);
-            if (match) next[project.id] = `https://github.com/${match[1]}`;
+            const slug = resolveRepoSlug(project.gitRemoteUrl);
+            if (slug !== null) next[project.id] = `https://github.com/${slug}`;
           }
           setRepoBaseByProject(next);
         },
@@ -236,7 +237,7 @@ function BoardPage() {
     return () => {
       cancelled = true;
     };
-  }, [sdk]);
+  }, [sdk, projects]);
   const repoBaseFor = useCallback(
     (projectId: string): string | null => repoBaseByProject[projectId] ?? null,
     [repoBaseByProject],
@@ -384,6 +385,9 @@ function BoardPage() {
   // list changes — no interval, no per-card calls. Failures degrade to
   // "no status known"; the board never breaks on this path.
   const [ticketStatuses, setTicketStatuses] = useState<Record<string, Record<number, { kind: string; state: string }>>>({});
+  // visibleRefKey is a sorted, comma-joined snapshot ("owner/repo#42,...").
+  // Safe to join: repo slugs cannot contain commas or hashes. It doubles as
+  // the effect dependency (cheap string equality) and is re-parsed below.
   const visibleRefKey = useMemo(
     () =>
       visibleThreads
@@ -415,16 +419,34 @@ function BoardPage() {
       set.add(num);
       wanted.set(repo, set);
     }
+    // Replace the whole map per snapshot (not merge) so statuses mirror the
+    // visible ref set exactly — no stale dots, no session-long growth.
+    const next: Record<string, Record<number, { kind: string; state: string }>> = {};
+    let pending = wanted.size;
+    const settle = () => {
+      if (!cancelled && pending === 0) setTicketStatuses(next);
+    };
     for (const [repo, numbers] of wanted) {
+      // The RPC caps input at 500 numbers; slice so an overflowing repo
+      // degrades to partial dots instead of a rejected call (no dots at all).
+      const batch = [...numbers].slice(0, 500);
       rpc
-        .call("tracker_status", { repo, numbers: [...numbers] })
+        .call("tracker_status", { repo, numbers: batch })
         .then(
           (result) => {
             if (!cancelled) {
-              setTicketStatuses((current) => ({ ...current, [repo]: result.statuses }));
+              next[repo] = result.statuses;
+              pending -= 1;
+              settle();
             }
           },
-          () => {}, // Status is optional decoration; chips render without it.
+          () => {
+            // Status is optional decoration; chips render without it.
+            if (!cancelled) {
+              pending -= 1;
+              settle();
+            }
+          },
         );
     }
     return () => {
