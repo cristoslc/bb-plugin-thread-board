@@ -478,8 +478,11 @@ describe("assembleBoard — the composition app.tsx wires", () => {
     const doneIds = new Set(["p"]);
     const result = assembleBoard([parent, child], "status", CONTEXT, new Map(), doneIds, NOW);
     // promoted (live child of a done parent) → no nested rows under p
+    expect(result.nestedChildrenByParent.get("p") ?? []).toHaveLength(0);
     expect(result.nestedChildrenByParent.has("p")).toBe(false);
-    // …but the parent card still reports its one visible child
+    // …but the parent card still reports its one visible child. The card
+    // renders the chip whenever this count is > 0, even with zero nested
+    // rows; only the chevron (which toggles rows) stays gated on rows.
     expect(result.childCountByParent.get("p")).toBe(1);
   });
 });

@@ -209,29 +209,31 @@ export function ThreadCard({
             {branch === "" ? null : <span className="text-muted-foreground/40"> · {branch}</span>}
           </p>
         </a>
-        {hasRows ? (
+        {chipCount > 0 ? (
           <div className="flex shrink-0 items-start gap-0.5 py-2 pr-1.5">
-            <button
-              type="button"
-              aria-expanded={!collapsed}
-              aria-label={collapsed ? "Expand subthreads" : "Collapse subthreads"}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setCollapsed((value) => !value);
-              }}
-              className={cn(
-                "flex items-center gap-0.5 rounded-sm text-muted-foreground/70",
-                "transition-colors hover:bg-accent hover:text-foreground",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              )}
-            >
-              <Icon
-                name={collapsed ? "ChevronRight" : "ChevronDown"}
-                className="size-3"
-                aria-hidden
-              />
-            </button>
+            {hasRows ? (
+              <button
+                type="button"
+                aria-expanded={!collapsed}
+                aria-label={collapsed ? "Expand subthreads" : "Collapse subthreads"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setCollapsed((value) => !value);
+                }}
+                className={cn(
+                  "flex items-center gap-0.5 rounded-sm text-muted-foreground/70",
+                  "transition-colors hover:bg-accent hover:text-foreground",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                )}
+              >
+                <Icon
+                  name={collapsed ? "ChevronRight" : "ChevronDown"}
+                  className="size-3"
+                  aria-hidden
+                />
+              </button>
+            ) : null}
             <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
               {chipCount}
             </span>
