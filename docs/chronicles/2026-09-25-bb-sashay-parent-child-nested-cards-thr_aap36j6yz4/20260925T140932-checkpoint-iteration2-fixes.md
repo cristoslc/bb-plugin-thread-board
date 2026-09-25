@@ -41,4 +41,4 @@ are unchanged (the parameter defaults to building from `threads`).
 - `npm test`: 2 files, 61 tests, all passing.
 - `npx tsc --noEmit`: clean.
 
-**Commits in this unit:** (filled below after commit)
+**Commits in this unit:** 4def667, b704a52

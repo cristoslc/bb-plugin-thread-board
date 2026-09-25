@@ -58,15 +58,19 @@ export function assembleBoard(
   doneIds: ReadonlySet<string> = new Set(),
   now: number = Date.now(),
 ): BoardAssembly {
+  // One family index serves both halves: the nesting pass and the chip
+  // counts both read the same raw parent→children map.
+  const familyIndex = buildFamilyIndex(threads);
   const nested = nestUnderParents(
     buildColumns(threads, groupBy, context, frozenColumns, doneIds, now),
     threads,
     groupBy,
     context,
     now,
+    familyIndex,
   );
   const childCountByParent = new Map<string, number>();
-  for (const [parentId, children] of buildFamilyIndex(threads).childrenByParent) {
+  for (const [parentId, children] of familyIndex.childrenByParent) {
     childCountByParent.set(parentId, children.length);
   }
   return {
@@ -200,8 +204,9 @@ export function nestUnderParents(
   groupBy: GroupBy,
   context: GroupingContext,
   now: number = Date.now(),
+  familyIndex: FamilyIndex = buildFamilyIndex(threads),
 ): NestingResult {
-  const index = buildFamilyIndex(threads);
+  const index = familyIndex;
   const threadById = new Map(threads.map((thread) => [thread.id, thread]));
 
   // Decide, per child, nest vs. flat. Promoted/flat children keep their
