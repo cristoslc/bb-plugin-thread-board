@@ -10,10 +10,14 @@
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/cristoslc/bb-plugin-thread-board"></a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-state-dark.png">
-  <img src="docs/screenshots/board-state-light.png" alt="Board grouped by Attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets" width="100%">
-</picture>
+<p align="center">
+  <a href="docs/screenshots/board-state-dark.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-state-dark.png">
+      <img src="docs/screenshots/board-state-light.png" alt="Board grouped by Attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets" width="100%">
+    </picture>
+  </a>
+</p>
 
 ## What it does
 
@@ -38,10 +42,12 @@ excluded.
 ## Screenshots
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
-    <img src="docs/screenshots/board-thread-pane-light.png" alt="Opening a card slides in a thread pane with the conversation" width="85%">
-  </picture>
+  <a href="docs/screenshots/board-thread-pane-dark.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
+      <img src="docs/screenshots/board-thread-pane-light.png" alt="Opening a card slides in a thread pane with the conversation" width="85%">
+    </picture>
+  </a>
   <br>
   <strong>Thread pane</strong> — opening a card slides in the conversation alongside the board
 </p>
@@ -50,24 +56,30 @@ excluded.
 <summary>More screenshots</summary>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-recency-dark.png">
-    <img src="docs/screenshots/board-recency-light.png" alt="Last activity grouping: every thread bucketed by age, most recent leftmost" width="85%">
-  </picture>
+  <a href="docs/screenshots/board-recency-dark.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-recency-dark.png">
+      <img src="docs/screenshots/board-recency-light.png" alt="Last activity grouping: every thread bucketed by age, most recent leftmost" width="85%">
+    </picture>
+  </a>
   <br>
   <strong>Last activity</strong> — every thread bucketed by age, most recent leftmost
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-board-dark.png">
-    <img src="docs/screenshots/phone-board-light.png" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally" width="32%">
-  </picture>
+  <a href="docs/screenshots/phone-board-dark.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-board-dark.png">
+      <img src="docs/screenshots/phone-board-light.png" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally" width="32%">
+    </picture>
+  </a>
   &nbsp;&nbsp;
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-thread-pane-dark.png">
-    <img src="docs/screenshots/phone-thread-pane-light.png" alt="Thread pane full screen on a phone, with the conversation and reply box" width="32%">
-  </picture>
+  <a href="docs/screenshots/phone-thread-pane-dark.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-thread-pane-dark.png">
+      <img src="docs/screenshots/phone-thread-pane-light.png" alt="Thread pane full screen on a phone, with the conversation and reply box" width="32%">
+    </picture>
+  </a>
   <br>
   <strong>Phone</strong> — the toolbar stacks and columns scroll horizontally;
   the thread pane goes full screen
