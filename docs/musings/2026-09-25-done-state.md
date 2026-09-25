@@ -93,6 +93,31 @@ Consequences:
   own namespace, stamped `doneAt`, optional `keep` flag** — same server-side
   guarantees, no dependency.
 
+## SETTLED (2026-09-25, operator call): Done lives in plugin metadata, pluginId `thread-board`
+
+The lean above is now the decision. Done is stored as bb-native thread plugin
+metadata scoped to the board plugin:
+
+- **Namespace:** `pluginId: "thread-board"` (SDK defaults `pluginId` to the
+  calling plugin on both frontend `sdk.threads` and backend `bb.sdk`; plugin
+  ids are lowercase letters/digits/dashes — ours qualifies).
+- **Key and shape:** `"done"` → `{ doneAt: <ISO-8601 string>, keep?: boolean }`.
+  Absent key = not done. `doneAt` is the sweep's aging basis; `keep` is the
+  per-card sweep override.
+- **Why:** server-side so every client renders the same Done set; rides with
+  the thread across moves; zero dependency on the tags plugin; not absorbed
+  into tags (two encodings of one store, two sources of truth).
+- **Known limitation, accepted:** plugin metadata does NOT appear in the
+  live sidebar stream (`PluginSidebarThread` carries no `pluginMetadata`, and
+  thread realtime changes have no metadata event). The board keeps its
+  custom `done-changed` realtime publish plus RPC read path — it refetches
+  on signal rather than reading metadata from the stream. The 256 KiB
+  per-namespace cap is a non-issue: one tiny `done` record per thread.
+- **Coordination:** the sweep sashay built its core over a `DoneAgeSource`
+  interface (lib/sweep.ts) with the KV stopgap; the CLI sashay's plan already
+  specifies the metadata-backed RPC migration. This sashay lands the record
+  shape both siblings await.
+
 
 View preferences (group/filter/search) and pane width stay in localStorage —
 deliberately. Different machines and browser tabs do different things, and
