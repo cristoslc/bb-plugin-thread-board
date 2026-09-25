@@ -71,13 +71,28 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 // Kepler-style age buckets for idle threads (State grouping) and for all
-// threads (Last activity grouping). Ordered oldest-first for lookup; columns
-// render in the reverse direction.
+// threads (Last activity grouping). Ordered oldest-first for lookup; the
+// column orders below reverse them so boards read newest-leftmost.
 const AGE_BUCKETS: { id: string; label: string; minAge: number; maxAge: number }[] = [
   { id: "awhile", label: "A while ago", minAge: 7 * DAY, maxAge: Number.POSITIVE_INFINITY },
   { id: "earlier", label: "Earlier", minAge: DAY, maxAge: 7 * DAY },
   { id: "today", label: "Today", minAge: HOUR, maxAge: DAY },
   { id: "recent", label: "Recent", minAge: 0, maxAge: HOUR },
+];
+
+// Column display order per grouping, left to right, derived from AGE_BUCKETS
+// (most recent leftmost, least recent rightmost) so the board reads in order
+// of attention/focus: Pinned (prepended in buildColumns), then lanes wanting
+// the operator, then lanes to catch up on, then running, then recency buckets.
+// Done (appended in buildColumns) trails far right.
+const RECENCY_COLUMN_ORDER: readonly string[] = [...AGE_BUCKETS]
+  .reverse()
+  .map((bucket) => bucket.id);
+const STATUS_COLUMN_ORDER: readonly string[] = [
+  "attention",
+  "unread",
+  "working",
+  ...RECENCY_COLUMN_ORDER.map((id) => `idle-${id}`),
 ];
 
 const IDLE_BUCKETS = AGE_BUCKETS.map((bucket) => ({
@@ -172,12 +187,12 @@ function labelFor(groupBy: GroupBy, key: string, context: GroupingContext): stri
 function columnSortKey(groupBy: GroupBy, columnId: string): number {
   const fixedOrder =
     groupBy === "status"
-      ? ["working", "attention", "unread"]
+      ? STATUS_COLUMN_ORDER
       : groupBy === "recency"
-        ? ["recent", "today", "earlier", "awhile"]
+        ? RECENCY_COLUMN_ORDER
         : groupBy === "none"
           ? ["all"]
-          : [];
+          : []
   const index = fixedOrder.indexOf(columnId);
   return index === -1 ? fixedOrder.length : index;
 }

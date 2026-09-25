@@ -194,6 +194,51 @@ describe("buildColumns", () => {
     expect(columns.map((c) => c.id)).toEqual(["pinned", "working", "done"]);
   });
 
+  it("orders state lanes by attention priority with newest idle buckets leftmost", () => {
+    const columns = buildColumns(
+      [
+        thread({ id: "w", status: "active" }),
+        thread({ id: "a", hasPendingInteraction: true }),
+        thread({ id: "u", isUnread: true }),
+        thread({ id: "recent", updatedAt: NOW - 5 * 1000 }),
+        thread({ id: "today", updatedAt: NOW - 2 * HOUR }),
+        thread({ id: "earlier", updatedAt: NOW - 2 * DAY }),
+        thread({ id: "awhile", updatedAt: NOW - 8 * DAY }),
+      ],
+      "status",
+      context,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(columns.map((c) => c.id)).toEqual([
+      "attention",
+      "unread",
+      "working",
+      "idle-recent",
+      "idle-today",
+      "idle-earlier",
+      "idle-awhile",
+    ]);
+  });
+
+  it("orders recency columns newest-leftmost", () => {
+    const columns = buildColumns(
+      [
+        thread({ id: "awhile", updatedAt: NOW - 8 * DAY }),
+        thread({ id: "earlier", updatedAt: NOW - 2 * DAY }),
+        thread({ id: "today", updatedAt: NOW - 2 * HOUR }),
+        thread({ id: "recent", updatedAt: NOW - 5 * 1000 }),
+      ],
+      "recency",
+      context,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(columns.map((c) => c.id)).toEqual(["recent", "today", "earlier", "awhile"]);
+  });
+
   it("freezes a selected thread's column across state changes", () => {
     const frozen = new Map([["1", { id: "unread", label: "Unread" }]]);
     const columns = buildColumns(
