@@ -2,32 +2,6 @@
 
 A kanban board of your bb threads with Kepler-style grouping and filtering.
 
-Works on desktop and phone — the board scrolls columns horizontally on narrow
-screens, and the thread pane goes full-screen.
-
-## Screenshots
-
-**Board grouped by Attention** — columns read left to right in order of
-attention: Pinned, Needs you, Unread, Working, then newest-first idle lanes.
-
-![Board grouped by Attention, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets](docs/screenshots/board-state.png)
-
-**Last activity grouping** — every thread bucketed by age, most recent
-leftmost.
-
-![Last activity grouping: every thread bucketed by age, most recent leftmost](docs/screenshots/board-recency.png)
-
-**Thread pane** — opening a card slides in the conversation. Shown here on
-desktop (side pane) and phone (full screen).
-
-![Opening a card slides in a thread pane with the conversation](docs/screenshots/board-thread-pane.png)
-
-![Thread pane full screen on a phone, with the conversation and reply box](docs/screenshots/phone-thread-pane.png)
-
-**On a phone** — the board scrolls horizontally; cards stay full width.
-
-![Board on a phone: toolbar stacked vertically, columns scrolling horizontally](docs/screenshots/phone-board.png)
-
 ## What it does
 
 - **Group** threads into columns by Attention (attention-priority lanes,
@@ -40,11 +14,21 @@ desktop (side pane) and phone (full screen).
   title, and branch or host. Click opens the thread; modified-click opens it
   in a new window natively.
 - Group, filter, and search selections persist per client in localStorage.
+- Works on desktop and phone: columns scroll horizontally on narrow screens,
+  and the thread pane goes full-screen.
 
 The board is a nav panel at **Thread Board** in the sidebar. It reads bb's
 live thread view through the plugin SDK's sidebar hooks, so it updates in
 real time and makes no server-side writes. Hidden and archived threads are
 excluded.
+
+## Screenshots
+
+| Desktop | Phone |
+| --- | --- |
+| **Attention grouping** — columns read left to right by priority: Pinned, Needs you, Unread, Working, then newest-first idle lanes.<br><img src="docs/screenshots/board-state.png" width="100%" alt="Board grouped by Attention, columns reading left to right in order of attention: Pinned, Needs you, Unread, Working, then newest-first idle buckets"> | **Board** — the toolbar stacks and columns scroll horizontally; cards stay full width.<br><img src="docs/screenshots/phone-board.png" width="60%" alt="Board on a phone: toolbar stacked vertically, columns scrolling horizontally"> |
+| **Last activity** — every thread bucketed by age, most recent leftmost.<br><img src="docs/screenshots/board-recency.png" width="100%" alt="Last activity grouping: every thread bucketed by age, most recent leftmost"> | **Thread pane** — opening a card goes full screen with the conversation and reply box.<br><img src="docs/screenshots/phone-thread-pane.png" width="60%" alt="Thread pane full screen on a phone, with the conversation and reply box"> |
+| **Thread pane** — opening a card slides in the conversation alongside the board.<br><img src="docs/screenshots/board-thread-pane.png" width="100%" alt="Opening a card slides in a thread pane with the conversation"> | |
 
 ## Install
 
