@@ -253,3 +253,20 @@ export function buildColumns(
   }
   return columns;
 }
+
+/**
+ * While a column's sweep is armed, its captured cards gather at the top so
+ * the blast radius reads at a glance. Armed order (newest-first from the
+ * eligibility functions) leads; the rest keep their relative order. Unknown
+ * ids are ignored and duplicates collapse — every card stays present once.
+ */
+export function withSweepGather(
+  threads: readonly PluginSidebarThread[],
+  armedThreadIds: readonly string[],
+): PluginSidebarThread[] {
+  if (armedThreadIds.length === 0) return [...threads];
+  const armedSet = new Set(armedThreadIds);
+  const gathered = threads.filter((thread) => armedSet.has(thread.id));
+  const rest = threads.filter((thread) => !armedSet.has(thread.id));
+  return [...gathered, ...rest];
+}
