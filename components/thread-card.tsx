@@ -3,6 +3,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { threadState } from "./grouping";
+import { grandchildCountFor } from "./nesting";
 import { ThreadCardMenu, type CardMenuAction } from "./thread-card-menu";
 
 function relativeTime(timestamp: number, now: number): string {
@@ -35,15 +36,24 @@ interface ThreadCardProps {
   stateDot: ReactNode;
   isActive: boolean;
   isDone: boolean;
+  /** Done ids; a done nested child (or a done parent's family) renders dimmed. */
+  doneIds?: ReadonlySet<string>;
   projectName: string;
   menuActions?: readonly CardMenuAction[];
-  /** Live children that nest beneath this card, in display order. */
+  /** Children that render as nested rows beneath this card, in display order. */
   childThreads?: readonly PluginSidebarThread[];
-  /** Parent id → that parent's nested children; used for the `+N more` count. */
+  /**
+   * The child-count chip's number: ALL visible children of this parent
+   * (including ones rendering standalone), not just the nested rows.
+   */
+  childCount?: number;
+  /** Parent id → nested children; used for the per-child `+N more` count. */
   childrenByParent?: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   /** Reduced opacity for family members that did not match the filters. */
   dimmed?: boolean;
   onOpen: () => void;
+  /** The currently open thread; a nested child row matching it is highlighted. */
+  activeThreadId?: string | null;
   /** Open a (nested child) thread's pane. */
   onOpenThread?: (threadId: string) => void;
   /** Right-click menu actions for a nested child thread. */
@@ -52,10 +62,16 @@ interface ThreadCardProps {
 
 function ChildRow({
   child,
+  dimmed,
+  isActive,
   onOpenThread,
   menuActions,
 }: {
   child: PluginSidebarThread;
+  /** A done child row dims, as does any child of a done parent. */
+  dimmed?: boolean;
+  /** The open thread's row gets the same active ring a standalone card gets. */
+  isActive?: boolean;
   onOpenThread: (threadId: string) => void;
   menuActions?: readonly CardMenuAction[];
 }) {
@@ -64,6 +80,7 @@ function ChildRow({
     <a
       href={child.href}
       draggable={false}
+      aria-current={isActive ? "true" : undefined}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -73,6 +90,8 @@ function ChildRow({
         "flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-[11px] leading-snug text-muted-foreground",
         "transition-colors hover:bg-accent/50 hover:text-foreground",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        dimmed && "opacity-50",
+        isActive && "ring-2 ring-ring",
       )}
     >
       <span
@@ -104,12 +123,15 @@ export function ThreadCard({
   stateDot,
   isActive,
   isDone,
+  doneIds,
   projectName,
   menuActions,
   childThreads,
+  childCount,
   childrenByParent,
   dimmed,
   onOpen,
+  activeThreadId,
   onOpenThread,
   childMenuActions,
 }: ThreadCardProps) {
@@ -117,135 +139,140 @@ export function ThreadCard({
   const [collapsed, setCollapsed] = useState(false);
   const branch = thread.environment?.branchName ?? thread.host?.name ?? "";
   const children = childThreads ?? [];
-  // Depth cap: a level-1 child's own children are not rendered; their total
-  // count surfaces as a `+N more` chip that opens the pane. Without the map
-  // there is no overflow information, so no chip.
-  const overflowCount = childrenByParent
-    ? children.reduce(
-        (sum, child) => sum + (childrenByParent.get(child.id)?.length ?? 0),
-        0,
-      )
-    : 0;
+  // The chip counts every visible child (prop from the raw family index);
+  // fall back to the nested rows when the caller does not supply it.
+  const chipCount = childCount ?? children.length;
+  // The toggle only makes sense when there are rows to hide; the chip still
+  // counts children that render standalone (promoted / cross-axis).
+  const hasRows = children.length > 0;
+
+  // The card is a container; the anchor (title/body) and the collapse toggle
+  // are siblings inside it — a button inside an anchor would be invalid HTML.
   const card = (
     <div
       className={cn(
+        "relative overflow-hidden rounded-md bg-card transition-colors",
+        "hover:bg-accent/50",
+        isActive
+          ? "ring-2 ring-ring"
+          : "ring-1 ring-transparent hover:ring-border",
+        isDone && "opacity-50 saturate-50",
         dimmed && "opacity-50",
         // The nested children render inside this wrapper so the dimming and
         // the indent rail cover the whole family block.
       )}
     >
-      <a
-        href={thread.href}
-        aria-current={isActive ? "true" : undefined}
-        draggable
-        onDragStart={(event) => {
-          event.dataTransfer.setData("text/thread-board-id", thread.id);
-          event.dataTransfer.effectAllowed = "move";
-        }}
-        onClick={(event) => {
-          // Let modified clicks (middle-click handled natively, cmd/ctrl new
-          // window) pass through; the host also routes plain clicks on href.
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          onOpen();
-        }}
+      <span
         className={cn(
-          "relative block overflow-hidden rounded-md bg-card px-3 py-2 transition-colors",
-          "hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          isActive
-            ? "ring-2 ring-ring"
-            : "ring-1 ring-transparent hover:ring-border",
-          isDone && "opacity-50 saturate-50",
+          "absolute inset-y-0 left-0 w-0.5",
+          ACCENT_CLASS[threadState(thread)] ?? "bg-transparent",
         )}
-      >
-        <span
-          className={cn(
-            "absolute inset-y-0 left-0 w-0.5",
-            ACCENT_CLASS[threadState(thread)] ?? "bg-transparent",
-          )}
-          aria-hidden
-        />
-        <div className="flex items-center gap-1.5 pl-1.5">
-          {stateDot}
-          {thread.isPinned ? (
-            <Icon name="Pin" className="size-3 text-muted-foreground/70" aria-hidden />
-          ) : null}
-          {thread.hasPendingInteraction ? (
-            <Icon
-              name="MessageQuestion"
-              className="size-3 text-amber-500"
-              aria-label={thread.indicatorLabel ?? "Needs your input"}
-            />
-          ) : null}
-          {children.length > 0 ? (
-            <>
-              <button
-                type="button"
-                aria-expanded={!collapsed}
-                aria-label={collapsed ? "Expand subthreads" : "Collapse subthreads"}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setCollapsed((value) => !value);
-                }}
-                className={cn(
-                  "flex items-center gap-0.5 rounded-sm text-muted-foreground/70",
-                  "transition-colors hover:bg-accent hover:text-foreground",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                )}
-              >
-                <Icon
-                  name={collapsed ? "ChevronRight" : "ChevronDown"}
-                  className="size-3"
-                  aria-hidden
-                />
-              </button>
-              <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
-                {children.length}
-              </span>
-            </>
-          ) : null}
-          <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
-            {relativeTime(thread.updatedAt, now)}
-          </span>
-        </div>
-        <p className="mt-0.5 line-clamp-2 pl-1.5 text-[13px] leading-snug">{thread.displayTitle}</p>
-        <p className="mt-0.5 truncate pl-1.5 text-[11px] text-muted-foreground/70">
-          {projectName}
-          {branch === "" ? null : <span className="text-muted-foreground/40"> · {branch}</span>}
-        </p>
-      </a>
-      {children.length > 0 && !collapsed && onOpenThread !== undefined ? (
+        aria-hidden
+      />
+      <div className="flex items-stretch">
+        <a
+          href={thread.href}
+          aria-current={isActive ? "true" : undefined}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData("text/thread-board-id", thread.id);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          onClick={(event) => {
+            // Let modified clicks (middle-click handled natively, cmd/ctrl new
+            // window) pass through; the host also routes plain clicks on href.
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            onOpen();
+          }}
+          className="relative min-w-0 flex-1 px-3 py-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-center gap-1.5 pl-1.5">
+            {stateDot}
+            {thread.isPinned ? (
+              <Icon name="Pin" className="size-3 text-muted-foreground/70" aria-hidden />
+            ) : null}
+            {thread.hasPendingInteraction ? (
+              <Icon
+                name="MessageQuestion"
+                className="size-3 text-amber-500"
+                aria-label={thread.indicatorLabel ?? "Needs your input"}
+              />
+            ) : null}
+            <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+              {relativeTime(thread.updatedAt, now)}
+            </span>
+          </div>
+          <p className="mt-0.5 line-clamp-2 pl-1.5 text-[13px] leading-snug">{thread.displayTitle}</p>
+          <p className="mt-0.5 truncate pl-1.5 text-[11px] text-muted-foreground/70">
+            {projectName}
+            {branch === "" ? null : <span className="text-muted-foreground/40"> · {branch}</span>}
+          </p>
+        </a>
+        {hasRows ? (
+          <div className="flex shrink-0 items-start gap-0.5 py-2 pr-1.5">
+            <button
+              type="button"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand subthreads" : "Collapse subthreads"}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setCollapsed((value) => !value);
+              }}
+              className={cn(
+                "flex items-center gap-0.5 rounded-sm text-muted-foreground/70",
+                "transition-colors hover:bg-accent hover:text-foreground",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              )}
+            >
+              <Icon
+                name={collapsed ? "ChevronRight" : "ChevronDown"}
+                className="size-3"
+                aria-hidden
+              />
+            </button>
+            <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+              {chipCount}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {hasRows && !collapsed && onOpenThread !== undefined ? (
         <div className="ml-3 mt-1 border-l border-border/70 pl-2">
           <ul className="flex flex-col gap-0.5">
-            {children.map((child) => (
-              <li key={child.id}>
-                <ChildRow
-                  child={child}
-                  onOpenThread={onOpenThread}
-                  menuActions={childMenuActions?.(child)}
-                />
-              </li>
-            ))}
-            {overflowCount > 0 ? (
-              <li>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onOpenThread(thread.id);
-                  }}
-                  className={cn(
-                    "flex w-full items-center rounded-sm px-1.5 py-1 text-left text-[10px] text-muted-foreground/70",
-                    "transition-colors hover:bg-accent/50 hover:text-foreground",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  )}
-                >
-                  +{overflowCount} more
-                </button>
-              </li>
-            ) : null}
+            {children.map((child) => {
+              const childDone = doneIds?.has(child.id) ?? false;
+              const grandchildCount = grandchildCountFor(child, childrenByParent ?? new Map());
+              return (
+                <li key={child.id}>
+                  <ChildRow
+                    child={child}
+                    dimmed={isDone || childDone}
+                    isActive={child.id === activeThreadId}
+                    onOpenThread={onOpenThread}
+                    menuActions={childMenuActions?.(child)}
+                  />
+                  {grandchildCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onOpenThread(child.id);
+                      }}
+                      className={cn(
+                        "ml-1.5 flex items-center rounded-sm px-1.5 py-0.5 text-left text-[10px] text-muted-foreground/70",
+                        "transition-colors hover:bg-accent/50 hover:text-foreground",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      )}
+                    >
+                      +{grandchildCount} more
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

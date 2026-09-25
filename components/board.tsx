@@ -11,8 +11,13 @@ interface BoardProps {
   columns: readonly BoardColumn[];
   activeThreadId: string | null;
   doneIds: ReadonlySet<string>;
-  /** Parent id → its nested children (already filtered to the visible set). */
-  childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
+  /** Parent id → children that render as nested rows under the parent card. */
+  nestedChildrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
+  /**
+   * Parent id → ALL its visible children (raw family index); drives the
+   * child-count chip, which counts children that render standalone too.
+   */
+  childCountByParent: ReadonlyMap<string, number>;
   /** Family members that did not match the active filters; rendered dimmed. */
   dimmedIds: ReadonlySet<string>;
   projectNameFor: (projectId: string) => string;
@@ -49,7 +54,8 @@ export function Board({
   columns,
   activeThreadId,
   doneIds,
-  childrenByParent,
+  nestedChildrenByParent,
+  childCountByParent,
   dimmedIds,
   projectNameFor,
   onOpenThread,
@@ -128,8 +134,11 @@ export function Board({
                           isDone={doneIds.has(thread.id)}
                           projectName={projectNameFor(thread.projectId)}
                           menuActions={menuActionsFor(thread)}
-                          childThreads={childrenByParent.get(thread.id)}
-                          childrenByParent={childrenByParent}
+                          childThreads={nestedChildrenByParent.get(thread.id)}
+                          childCount={childCountByParent.get(thread.id) ?? 0}
+                          childrenByParent={nestedChildrenByParent}
+                          doneIds={doneIds}
+                          activeThreadId={activeThreadId}
                           dimmed={dimmedIds.has(thread.id)}
                           onOpen={() => onOpenThread(thread.id)}
                           onOpenThread={onOpenThread}

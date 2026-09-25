@@ -24,7 +24,7 @@ import {
 import {
   buildFamilyIndex,
   filterFamilies,
-  nestUnderParents,
+  assembleBoard,
 } from "./components/nesting";
 import { EmptyState } from "./components/empty-state";
 
@@ -203,28 +203,30 @@ function BoardPage() {
   // dims non-matching members), so `searched` is just the kept set.
   const searched = filtered;
 
-  const columns = useMemo(() => {
+  const frozenColumns = useMemo(() => {
     const frozen = new Map<string, { id: string; label: string }>();
     if (openThreadId !== null && frozenColumn !== null && frozenColumn.threadId === openThreadId) {
       frozen.set(frozenColumn.threadId, frozenColumn.column);
     }
-    const built = buildColumns(searched, groupBy, { projects, providers }, frozen, doneIds);
-    return nestUnderParents(built, searched, groupBy, { projects, providers }).columns;
-  }, [searched, groupBy, projects, providers, openThreadId, frozenColumn, doneIds]);
-  const childrenByParent = useMemo(
-    () => familyFiltered.kept.length > 0
-      ? buildFamilyIndex(searched).childrenByParent
-      : new Map(),
-    [familyFiltered, searched],
+    return frozen;
+  }, [openThreadId, frozenColumn]);
+
+  // Single assembly: buildColumns → nestUnderParents. The nesting result's
+  // map (not the raw family index) drives which children render as nested
+  // rows, so a promoted or cross-axis child appears only as its standalone
+  // card — never both standalone AND nested. The raw index's counts drive the
+  // parent card's child-count chip, which counts every visible child.
+  const assembly = useMemo(
+    () =>
+      assembleBoard(searched, groupBy, { projects, providers }, frozenColumns, doneIds),
+    [searched, groupBy, projects, providers, frozenColumns, doneIds],
   );
+  const columns = assembly.columns;
 
   const anyFilterActive =
     filter.projects.size > 0 || filter.providers.size > 0 || filter.states.size > 0 || searchActive;
   const emptyBecauseFiltered = visibleThreads.length > 0 && searched.length === 0 && anyFilterActive;
-  const dimmedIds = useMemo(
-    () => familyFiltered.dimmedIds,
-    [familyFiltered],
-  );
+  const dimmedIds = familyFiltered.dimmedIds;
 
   // The open pane's thread can vanish from the active view (archived,
   // deleted); the archived list keeps it resolvable so the pane stays open
@@ -357,7 +359,8 @@ function BoardPage() {
             columns={columns}
             activeThreadId={openThreadId}
             doneIds={doneIds}
-            childrenByParent={childrenByParent}
+            nestedChildrenByParent={assembly.nestedChildrenByParent}
+            childCountByParent={assembly.childCountByParent}
             dimmedIds={dimmedIds}
             projectNameFor={(projectId) =>
               projects.find((project) => project.id === projectId)?.name ?? "Personal"
