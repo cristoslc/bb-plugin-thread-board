@@ -421,7 +421,7 @@ function BoardPage() {
   // the effect dependency (cheap string equality) and is re-parsed below.
   const visibleRefKey = useMemo(
     () =>
-      visibleThreads
+      liveThreads
         .flatMap((thread) => {
           const repoBase = repoBaseByProject[thread.projectId];
           const repo = repoBase === undefined ? null : resolveRepoSlug(repoBase);
@@ -433,7 +433,7 @@ function BoardPage() {
         })
         .sort()
         .join(","),
-    [visibleThreads, repoBaseByProject],
+    [liveThreads, repoBaseByProject],
   );
   useEffect(() => {
     if (visibleRefKey === "") {
