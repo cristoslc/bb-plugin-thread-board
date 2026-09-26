@@ -86,10 +86,14 @@ bb thread-board config set <key> <value> [--json]
 ### `done` — the board's own Done namespace
 
 Storage: per-thread plugin metadata, key `"done"`:
-`{ doneAt: string (ISO-8601), keep?: boolean }`. The board reads it with
-`threads.getPluginMetadata({ threadId })` (absent/`null` = not done) and
-writes it with `threads.updatePluginMetadata({ threadId, set: { done } })`
-/ `{ remove: ["done"] }`.
+`{ doneAt: string (ISO-8601), keep?: boolean }` — the same store the
+merged board (PR #4) and sweep (PR #1) surfaces read; the CLI is a third
+surface over it, never a second encoding. The board reads it with
+`threads.getPluginMetadata({ threadId })` (absent = not done) and writes
+it with `threads.updatePluginMetadata({ threadId, set: { done } })` /
+`{ remove: ["done"] }`. Keep overrides live in two places and the CLI
+merges them: inside the done record, and in the sweep sibling's KV keep
+store (`sweep-keep-flags`) for threads never marked Done.
 
 - `done list` — list every thread carrying the board's `done` metadata:
   id, `doneAt`, `keep`, title (from `threads.list`; threads missing from
