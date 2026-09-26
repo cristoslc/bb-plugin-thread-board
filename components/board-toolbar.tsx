@@ -264,6 +264,9 @@ function ProjectDropdown({
 interface BoardToolbarProps {
   groupBy: GroupBy;
   onGroupByChange: (value: GroupBy) => void;
+  /** R3: "Nest child threads" toggle — nested rendering on/off. */
+  nestChildren: boolean;
+  onNestChildrenChange: (enabled: boolean) => void;
   filter: FilterState;
   onFilterChange: (filter: FilterState) => void;
   search: string;
@@ -289,6 +292,8 @@ const STATE_OPTIONS: readonly { value: ThreadState; label: string }[] = [
 export function BoardToolbar({
   groupBy,
   onGroupByChange,
+  nestChildren,
+  onNestChildrenChange,
   filter,
   onFilterChange,
   search,
@@ -324,6 +329,31 @@ export function BoardToolbar({
         summaryFor={() => GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label ?? groupBy}
         onSingleSelect={(value) => onGroupByChange(value as GroupBy)}
       />
+      {/* R3 "Nest child threads" toggle: lives in the Group control area —
+          it changes how the board structures families, like the grouping. */}
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={nestChildren}
+        onClick={() => onNestChildrenChange(!nestChildren)}
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground",
+          "hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+      >
+        <span
+          className={cn(
+            "flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border",
+            nestChildren
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-muted-foreground/50 bg-background",
+          )}
+          aria-hidden
+        >
+          {nestChildren ? <Icon name="Check" className="size-2.5" aria-hidden /> : null}
+        </span>
+        Nest child threads
+      </button>
       <ProjectDropdown
         projects={projects.filter((project) => projectIds.has(project.id) || !project.isPersonal)}
         selected={filter.projects}
