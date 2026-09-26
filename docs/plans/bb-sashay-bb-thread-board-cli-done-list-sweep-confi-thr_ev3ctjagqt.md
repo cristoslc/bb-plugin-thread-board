@@ -118,11 +118,14 @@ settings keys and the same metadata shape so the two surfaces agree):
 - Long-idle threads: not Done, not archived, `updatedAt` older than the
   idle threshold. The sweep musing leaves the idle-bucket semantics open
   ("which idle bucket counts as long-idle, and whether it shares
-  `doneArchiveDays`"); this plan settles it for the CLI: **`idleDays`,
+  `doneArchiveDays`"); this plan settles it for the CLI: **`idleArchiveDays`,
   default 30, its own setting** — Done aging is about the operator's
   attention (they marked it), idle aging is about the thread's silence;
   one number answering both conflates two questions. The board's sweep
-  arm can read the same setting when that sashay lands.
+  arm can read the same setting when that sashay lands. Key name chosen
+  to match the sibling sweep sashay's plan (`thr_x7zz4eabg2`), which
+  already commits to `idleArchiveDays`; the two surfaces must read the
+  same settings keys.
 
 Behavior:
 
@@ -151,7 +154,8 @@ Settings → Installed plugins; editable via
 writes the same store):
 
 - `doneArchiveDays` — number, default 7 (sweep musing: "default 7").
-- `idleDays` — number, default 30 (this plan's addition; see above).
+- `idleArchiveDays` — number, default 30 (aligned with the sibling sweep
+  sashay's plan; see the eligibility section above).
 
 - `config show` — print current effective values and their defaults,
   including which are overridden. `--json` for machines.
@@ -160,7 +164,8 @@ writes the same store):
   `settings.experimental_set`, echoes the new effective value. Unknown
   keys are a `PluginCliError` naming the valid keys. This subcommand
   exists so agents get one discoverable surface (`bb thread-board
-  config set idleDays 14`) without learning `bb plugin config` syntax.
+  config set idleArchiveDays 14`) without learning `bb plugin config`
+  syntax.
 
 ## Implementation shape
 
@@ -207,9 +212,10 @@ if the operator runs one.
 ## Test command
 
 `npm test` (vitest) and `npx tsc --noEmit` — both must pass. The
-project has no AGENTS.md yet; this plan declares the commands and the
-implementation adds a root `AGENTS.md` with `## Test command: npm test`
-plus the coverage-matrix pointer so future sashays discover them.
+project now has a root `AGENTS.md` (committed by the sibling sweep
+sashay's plan) declaring `## Test command: npm test` and pointing at
+`docs/test-coverage-matrix.md`. This sashay's delta rows (below) roll up
+into that master matrix during implementation.
 
 ## Out of scope (same rule as the musing)
 
