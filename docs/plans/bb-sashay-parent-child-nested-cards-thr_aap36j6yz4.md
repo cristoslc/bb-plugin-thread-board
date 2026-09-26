@@ -248,3 +248,100 @@ Typecheck gate: `npx tsc --noEmit` must pass alongside `npm test`.
   ships" wording suggested. Each level-1 child row with grandchildren shows
   its own inline `+N` chip (N = `grandchildCountFor(child, …)`), and clicking
   it opens that child's pane. The end-of-list aggregate chip is removed.
+
+## Refinement round 2 (2026-09-25, operator feedback on merged PR #3)
+
+Three refinements from #412. The logic layer's contract (decisions 1-8,
+promotion, axis-match, depth cap, family filtering) still holds; these change
+the rendering surface and add two assembly-level rules.
+
+### R1 — Full child titles (fat child rows)
+
+ChildRow upgrades from the slim one-line row to a compact card-like row:
+full title wraps over up to 2 lines (`line-clamp-2`, matching parent cards),
+keeping the state dot, pane-open on click, and the same menu actions. No
+branch line, no project line, no drag handle — children stay visually
+subordinate to parent cards (smaller text, muted, indent rail).
+
+### R2 — Archived children stay under the parent
+
+- `buildFamilyIndex` now receives the **non-hidden set (archived included)**.
+  The parent's own archived state still excludes the parent from columns —
+  unchanged behavior for parents.
+- Archived children render under the parent with an archived treatment:
+  dimmed + Archive icon + "archived" label (the way the sidebar reads an
+  archived thread). Clicking one opens the pane, where unarchive already
+  works via the existing archived lookup.
+- **Archived children never take standalone column slots** — they always
+  nest under their parent regardless of grouping (the promotion rule and the
+  axis-match rule apply to live children only; archived overrides both).
+  An archived child whose parent is not in the non-hidden set (archived or
+  deleted parent) renders nowhere — it is neither standalone (rule: never
+  takes a column slot) nor nester (parent absent). Edge case: an archived
+  family whose parent is archived vanishes whole.
+- Hidden threads remain excluded entirely (both R2 and the original index
+  contract).
+- Family-aware filtering: archived members ride along with a passing family
+  (rendered under the parent with their archived treatment) but **never
+  contribute a match** — an archived child matching alone does not surface
+  the family. Archived members land in `dimmedIds` when they do not match
+  (they nearly always do not); their archived treatment stacks on top.
+- Chip semantics: `childCountByParent` counts **all children in the raw
+  index (archived included)** — the chip is the family size, and the
+  archived rows are part of what the chevron reveals.
+
+### R3 — "Nest child threads" toggle
+
+- Checkbox-style toggle in the toolbar's Group control area, default ON,
+  persisted in localStorage under a new key
+  (`thread-board:nestChildren`, values `"on"`/`"off"`, validated like
+  `readStored`). Parsing lives in a pure helper
+  (`parseNestStored` in `components/preferences.ts`) so it is unit-testable
+  without a DOM.
+- **Nesting OFF = flat board:** every visible (non-archived) thread renders
+  as a standalone card in its own column slot — no promotion logic, no
+  nested rows, no chevrons, **no chips** (chip counts are meaningless when
+  nothing nests), and **no `+N` chips** — deep descendants are standalone
+  cards too, exactly the pre-nesting board.
+- **Nesting OFF → filtering is per-thread again:** family-aware keep-and-dim
+  makes no sense when families do not render together. `filterFamilies` is
+  bypassed; the plain state/project/provider/search filter applies to each
+  thread independently (no dimming).
+- **Nesting OFF → archived children do not render.** They cannot be
+  standalone (R2's never-standalone rule) and there are no nested rows to
+  ride under — archived threads leave the flat board, matching bb's sidebar
+  where archiving removes the thread from the list.
+- Family index still builds in both modes (cheap; R2's index contract is
+  mode-independent).
+
+### Implementation surface
+
+- `components/nesting.ts`: `buildFamilyIndex` gains archived-inclusion
+  (caller contract change); `nestUnderParents`/`assembleBoard` gain an
+  options argument (`nestingEnabled`, default `true`); archived children
+  always-nest rule inside `childNests`; when nesting is disabled the nesting
+  pass is skipped entirely (columns untouched, empty maps out).
+- `app.tsx`: `visibleThreads` keeps non-hidden only (archived included) for
+  the family pipeline; `searched` still feeds `assembleBoard`, which now
+  internally splits archived threads out of column building. New
+  `nestChildren` state + persistence; `filterFamilies` bypassed when OFF.
+- `components/preferences.ts` (new, pure): `NEST_CHILDREN_KEY`,
+  `parseNestStored`, `nestStoredValue`.
+- `components/board-toolbar.tsx`: checkbox-style toggle button next to the
+  Group dropdown.
+- `components/thread-card.tsx`: fat ChildRow (line-clamp-2 title, compact
+  card-like row) + archived treatment (dimmed, Archive icon, "archived"
+  label); chip/chevron/`+N` suppressed when nesting is OFF (no props → no
+  rows → chip hidden via existing `chipCount` gating).
+- Tests: `tests/nesting.test.ts` (archived-family behavior, toggle-off
+  assembly, filter interactions) + `tests/preferences.test.ts` (new;
+  toggle persistence parsing) + coverage matrix rows.
+
+### Refinement test matrix additions
+
+| Workflow path | Blast radius | Happy | Sad | Edge | Corner |
+|---------------|--------------|-------|-----|------|--------|
+| Archived children nest under parent | low | auto | auto (never standalone, cross-axis too) | auto (archived parent → family vanishes) | auto (never promoted in Attention) |
+| Family filter with archived members | low | auto (live match keeps archived rider) | auto (archived-only match drops family) | auto (archived rider dimmed) | skip |
+| Nesting toggle OFF (assembly) | low | auto (flat, chips empty, promotion bypassed) | auto (archived children hidden) | auto (deep descendants flat) | auto (filter per-thread) |
+| Nesting toggle persistence | low | auto (`parseNestStored` round-trip) | auto (invalid value → default ON) | auto (null → ON) | skip |
