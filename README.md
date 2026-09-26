@@ -1,7 +1,7 @@
 # Thread Board
 
 <p align="center">
-  A kanban board of your bb threads with grouping and filtering.
+  A kanban board for your bb threads, grouped by what needs your attention.
 </p>
 
 <p align="center">
@@ -14,84 +14,26 @@
   <a href="docs/screenshots/board-thread-pane-dark.png">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
-      <img src="docs/screenshots/board-thread-pane-light.png" alt="Board grouped by Attention with the thread pane open: Pinned, Needs you, Unread, Working, then newest-first idle buckets, and a conversation pane slid in alongside" width="100%">
+      <img src="docs/screenshots/board-thread-pane-light.png" alt="The Thread Board with a thread conversation pane open beside it" width="100%">
     </picture>
   </a>
 </p>
 
 ## What it does
 
-- **Group** threads into columns by Attention, Last activity, Project,
-  Provider, Machine (which bb host the thread runs on), or None (one flat
-  column).
-- **Filter** by project, provider, and thread state (Working / Needs you /
-  Unread / Idle).
-- **Search** across thread titles and ids.
-- **Nest** subthreads beneath their parent card, Jira-subissue style:
-  collapsible child rows on the card (full title, up to two lines), with
-  needs-you children promoted to their own column so they never hide, and
-  family-aware filtering that surfaces the whole family when any member
-  matches. Archived children stay under their parent, dimmed with an
-  archived mark, until unarchived from the pane. A "Nest child threads"
-  toggle in the toolbar flattens the board to independent cards.
-- **Sweep** old Done threads and long-idle threads to Archive with a
-  two-click arm-then-confirm button per column: the first click arms (shows
-  `Sweep N → Archive ?`, highlights and gathers exactly the eligible
-  cards), the second click performs, and clicking away disarms. The
-  eligible set is frozen at arm time; threads that turn eligible after
-  arming wait for the next arm. Thresholds: `doneArchiveDays` (default 7
-  days past the Done mark) and `idleArchiveDays` (default 30 days idle),
-  both settable with `bb plugin config thread-board set …`. A card-menu
-  "Keep from sweep" override exempts a thread from both sweeps.
-- Cards show state, pin, pending-interaction badge, relative update time,
-  title, and branch or host. Click opens the thread; modified-click opens it
-  in a new window natively.
-- **Ticket chips**: titles and branches carrying ticket references
-  (`PROJ-123`, `#1284`, GitHub issue/PR URLs) get small chips. Clicking a
-  chip opens the tracker; chips render inert when the project has no
-  GitHub remote.
-- **GitHub status dots** (optional): for numeric refs, the board's server
-  reads the official GitHub plugin's local cache read-only and shows an
-  open/closed/merged dot on matching chips. Without the cache the chips
-  simply render without dots — the board never breaks.
-- Group, filter, and search selections persist per client in localStorage.
-- Works on desktop and phone: columns scroll horizontally on narrow screens,
-  and the thread pane goes full-screen.
+The default grouping reads left to right in order of attention: **Pinned,
+Needs you, Unread, Working**, then idle threads bucketed by how long
+they've been quiet.
 
-The board is a nav panel at **Thread Board** in the sidebar. It reads bb's
-live thread view through the plugin SDK's sidebar hooks, so it updates in
-real time. It writes through bb's own stores: pin state, read state, and the
-Done marks the sweep reads — never thread content. Hidden threads are
-excluded; archived threads render only as rows nested under their live
-parent (or not at all when nesting is off).
+- **Group by** Attention, Last activity, Project, Provider, or Machine
+- **Filter and search** by state, project, provider, or title
+- **Nest** subthreads under their parent card
+- **Sweep** stale Done and long-idle threads to Archive in two clicks
+- **Ticket chips** with GitHub status dots, linking to the tracker
+- **Thread pane** slides in beside the board; works on phone
 
-## CLI
-
-The plugin registers one `bb` subcommand, `bb thread-board`, for managing
-its own state (not a re-spelling of `bb thread`):
-
-```sh
-bb thread-board done list [--json]
-bb thread-board done mark <thread-id>... [--json]   # stamps doneAt; idempotent
-bb thread-board done clear <thread-id>... [--json]
-bb thread-board sweep [--ids <id>...] [--json]      # dry-run: prints the eligible set, exits 1
-bb thread-board sweep --confirm [--ids <id>...] [--json]
-bb thread-board config show [--json]
-bb thread-board config set <doneArchiveDays|idleArchiveDays> <days> [--json]
-```
-
-Agents can list and mark Done state, preview the sweep, and edit the
-thresholds. **The sweep never archives without `--confirm`:** the plain
-invocation is a dry-run that prints what would be archived (id, why it
-qualifies) and exits 1, so a scripted caller reading only the exit code
-cannot mistake "here is what I would archive" for success. `--ids` freezes
-the blast radius to the named threads — with `--confirm`, only those ids
-are archived even if more threads have become eligible in the meantime.
-Done threads older than `doneArchiveDays` (default 7) and long-idle threads
-past `idleArchiveDays` (default 30) are eligible; `keep` threads (from the
-card menu or `sweep_keep_set`), pinned threads, and already-archived
-threads never are. The same thresholds render in Settings → Installed
-plugins.
+It lives in the sidebar as a nav panel and updates in real time through
+the plugin SDK.
 
 ## Screenshots
 
@@ -116,6 +58,13 @@ plugins.
   the thread pane goes full screen
 </p>
 
+## Requirements
+
+- Node ≥ 18
+- bb ≥ 0.43 with plugin SDK ≥ 0.5.9
+- Optional: the official GitHub plugin, for ticket status dots. Without its
+  local cache, chips render without dots and everything else works.
+
 ## Install
 
 Install straight from GitHub, no clone needed:
@@ -124,14 +73,48 @@ Install straight from GitHub, no clone needed:
 bb plugin install https://github.com/cristoslc/bb-plugin-thread-board
 ```
 
-or pin a version:
+To update later, run the same command again (add `--yes` to skip the
+confirmation prompt). To pin a version:
 
 ```sh
-bb plugin install git:https://github.com/cristoslc/bb-plugin-thread-board@v0.1.4
+bb plugin install git:https://github.com/cristoslc/bb-plugin-thread-board@v0.3.0
 ```
 
-To update later, run the same install command again (add `--yes` to skip
-the confirmation prompt).
+## Configuration
+
+Set sweep thresholds in Settings → Installed plugins or with the CLI:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `doneArchiveDays` | 7 | Done threads older than this become sweep-eligible |
+| `idleArchiveDays` | 30 | Threads idle longer than this become sweep-eligible |
+
+Any thread can be exempted from both sweeps with the card-menu
+"Keep from sweep" override.
+
+## CLI
+
+The plugin registers one `bb` subcommand for managing its own state:
+
+```sh
+bb thread-board done list [--json]
+bb thread-board done mark <thread-id>...
+bb thread-board done clear <thread-id>...
+bb thread-board sweep [--ids <id>...] [--confirm]
+bb thread-board config show
+bb thread-board config set <doneArchiveDays|idleArchiveDays> <days>
+```
+
+All commands accept `--json`. The sweep never archives without `--confirm`;
+without it the command is a dry-run: it prints what would be archived and
+exits 1.
+
+## Data and privacy
+
+The board reads bb's live thread view through the plugin SDK and writes only
+pin state, read state, and Done marks through bb's own stores — never thread
+content. For ticket status dots it reads the official GitHub plugin's local
+cache read-only. Nothing leaves your machine.
 
 ## Development
 
@@ -144,3 +127,20 @@ bb plugin reload thread-board
 npm test           # vitest
 npx tsc --noEmit   # typecheck
 ```
+
+The screenshots in `docs/screenshots/` are captured with a harness in
+`scripts/screenshot/` — see its README for usage.
+
+## Contributing
+
+Issues and PRs are welcome at
+[github.com/cristoslc/bb-plugin-thread-board](https://github.com/cristoslc/bb-plugin-thread-board).
+Run `npm test` and `npx tsc --noEmit` before submitting.
+
+## License
+
+[MIT](LICENSE).
+
+## Changelog
+
+Notable changes are documented in [CHANGELOG.md](CHANGELOG.md).
