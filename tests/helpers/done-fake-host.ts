@@ -25,7 +25,7 @@ type SetupOptions = {
 export async function setup(opts: SetupOptions = {}): Promise<DoneTestHost> {
   const meta = new Map<string, JsonValue>();
   const host: FakePluginHost = createFakePluginHost({
-    pluginId: "thread-board",
+    pluginId: "focus-board",
     sdk: {
       threads: {
         list: async () => (opts.threads ?? []).map((id) => ({ id })),

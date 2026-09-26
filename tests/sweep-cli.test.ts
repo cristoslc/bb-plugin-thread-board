@@ -19,7 +19,7 @@ function idleThread(id: string, daysAgo: number) {
   return makeThreadResponse({ id, updatedAt: NOW - daysAgo * DAY_MS });
 }
 
-describe("bb thread-board sweep", () => {
+describe("bb focus-board sweep", () => {
   let harness: FakePluginHarness;
   let bb: BbPluginApi;
   let metadata: Map<string, Record<string, unknown>>;
@@ -34,7 +34,7 @@ describe("bb thread-board sweep", () => {
 
   async function load(): Promise<void> {
     const host = createFakePluginHost({
-      pluginId: "thread-board",
+      pluginId: "focus-board",
       sdk: {
         threads: {
           list: async () => listedThreads,

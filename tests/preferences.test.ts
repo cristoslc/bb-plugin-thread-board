@@ -3,7 +3,7 @@ import { NEST_CHILDREN_KEY, nestStoredValue, parseNestStored } from "../componen
 
 describe("nesting toggle persistence (R3)", () => {
   it("exposes the localStorage key", () => {
-    expect(NEST_CHILDREN_KEY).toBe("thread-board:nestChildren");
+    expect(NEST_CHILDREN_KEY).toBe("focus-board:nestChildren");
   });
 
   it("round-trips: on for true, off for false", () => {

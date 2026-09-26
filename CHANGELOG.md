@@ -3,6 +3,17 @@
 All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] — 2026-09-25
+
+### Changed
+
+- **Renamed to Focus Board** (#8): package `bb-plugin-focus-board`, plugin
+  ID `focus-board`, CLI `bb focus-board`, and `focus-board:` preference
+  keys. Saved grouping/filter/search preferences reset once on update.
+  Repository moved to
+  [github.com/cristoslc/bb-plugin-focus-board](https://github.com/cristoslc/bb-plugin-focus-board)
+  (the old URL redirects).
+
 ## [0.3.0] — 2026-09-25
 
 ### Added

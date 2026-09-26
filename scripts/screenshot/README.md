@@ -15,7 +15,7 @@ host app involved.
 - `index.html` — defines bb's built-in theme tokens (extracted from the bb
   app bundle): the dark set on `html.dark`, a light set on `html:not(.dark)`,
   plus a minimal preflight (the plugin's compiled CSS ships without one
-  because the host app provides it) and the `data-bb-plugin="thread-board"`
+  because the host app provides it) and the `data-bb-plugin="focus-board"`
   attribute so the compiled utilities' scoping matches.
 - `shoot.mjs` — the capture driver. Captures three shots in both themes,
   toggling the `dark` class per pass: board with the thread pane open

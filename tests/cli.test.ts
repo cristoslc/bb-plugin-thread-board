@@ -17,7 +17,7 @@ function iso(msAgo: number): string {
   return new Date(NOW - msAgo).toISOString();
 }
 
-describe("bb thread-board CLI (done + config)", () => {
+describe("bb focus-board CLI (done + config)", () => {
   let bb: Bb;
   let harness: FakePluginHarness;
   let metadata: Map<string, Record<string, unknown>>;
@@ -34,7 +34,7 @@ describe("bb thread-board CLI (done + config)", () => {
 
   async function load(): Promise<void> {
     const host = createFakePluginHost({
-      pluginId: "thread-board",
+      pluginId: "focus-board",
       sdk: {
         threads: {
           list: async (args?: { archived?: boolean }) =>
@@ -436,7 +436,7 @@ describe("bb thread-board CLI (done + config)", () => {
 
     it("keeps the CLI registered under the top-level name", async () => {
       await load();
-      expect(harness.inspection.registrations.cli?.name).toBe("thread-board");
+      expect(harness.inspection.registrations.cli?.name).toBe("focus-board");
     });
   });
 });
@@ -445,7 +445,7 @@ describe("bb thread-board CLI (done + config)", () => {
 // contract so a shape change upstream is caught here.
 describe("runCli result normalization", () => {
   it("returns exitCode/stdout/stderr", async () => {
-    const host = createFakePluginHost({ pluginId: "thread-board" });
+    const host = createFakePluginHost({ pluginId: "focus-board" });
     await server(host.bb);
     const result: PluginCliExecutionResult = await host.harness.behavior.runCli(
       ["--help"],

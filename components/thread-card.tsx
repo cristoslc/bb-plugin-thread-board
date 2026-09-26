@@ -249,7 +249,7 @@ export function ThreadCard({
           aria-current={isActive ? "true" : undefined}
           draggable
           onDragStart={(event) => {
-            event.dataTransfer.setData("text/thread-board-id", thread.id);
+            event.dataTransfer.setData("text/focus-board-id", thread.id);
             event.dataTransfer.effectAllowed = "move";
           }}
           onClick={(event) => {

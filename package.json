@@ -1,6 +1,6 @@
 {
-  "name": "bb-plugin-thread-board",
-  "version": "0.3.0",
+  "name": "bb-plugin-focus-board",
+  "version": "0.3.1",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -13,8 +13,8 @@
     "bbPluginSdk": ">=0.5.9"
   },
   "bb": {
-    "name": "Thread Board",
-    "description": "A kanban board of your threads with group-by and filter selections.",
+    "name": "Focus Board",
+    "description": "A kanban board of your threads, focused on what needs you first.",
     "branding": {
       "icon": "Columns2"
     },

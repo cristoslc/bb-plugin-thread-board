@@ -1,4 +1,4 @@
-// bb-plugin-thread-board — a BB plugin backend entry.
+// bb-plugin-focus-board — a BB plugin backend entry.
 //
 // The board reads bb's live thread view through the frontend sidebar hooks.
 // Server state is: (1) the set of threads the user marked "Done" — one record
@@ -85,7 +85,7 @@ const LEGACY_DONE_KEY = "done-thread-ids";
 const KEEP_KEY = "sweep-keep-flags";
 /**
  * Best-effort index of thread ids the board believes carry its `done`
- * metadata. The SDK has no metadata scan, so `bb thread-board done list`
+ * metadata. The SDK has no metadata scan, so `bb focus-board done list`
  * and `sweep` use it to report marks on threads that have dropped out of
  * both the live and archived thread lists (deleted since their mark).
  * Metadata stays the source of truth; the index only widens reporting of
@@ -368,7 +368,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  // --- CLI: bb thread-board ---
+  // --- CLI: bb focus-board ---
   //
   // Manages plugin-owned state only (the standing rule from the CLI
   // musing): done list/mark/clear over the board's own metadata, the
@@ -720,8 +720,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.cli.register(
     defineCli({
-      name: "thread-board",
-      summary: "Manage the Thread Board plugin's own state",
+      name: "focus-board",
+      summary: "Manage the Focus Board plugin's own state",
       description:
         "Done list/mark/clear, sweep (archive old Done + long-idle, dry-run by default), and the sweep thresholds.",
       commands: {

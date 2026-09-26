@@ -21,7 +21,7 @@ export interface SimProject {
 
 export const SIM_PROJECTS: readonly SimProject[] = [
   { id: "personal", name: "Personal", isPersonal: true, href: "/projects/personal", settingsHref: "" },
-  { id: "proj_board", name: "Thread Board", isPersonal: false, href: "/projects/board", settingsHref: "/projects/board/settings" },
+  { id: "proj_board", name: "Focus Board", isPersonal: false, href: "/projects/board", settingsHref: "/projects/board/settings" },
   { id: "proj_api", name: "API Gateway", isPersonal: false, href: "/projects/api", settingsHref: "/projects/api/settings" },
   { id: "proj_web", name: "Web App", isPersonal: false, href: "/projects/web", settingsHref: "/projects/web/settings" },
 ];
@@ -87,9 +87,9 @@ function thread(overrides: Partial<SimThread> & { id: string; updatedAt: number 
 
 const boardEnv = (branch: string) => ({
   id: `env_board_${branch.replace(/[^a-z0-9]/gi, "-")}`,
-  name: "Thread Board",
+  name: "Focus Board",
   branchName: branch,
-  path: "~/Documents/code/bb-plugin-thread-board",
+  path: "~/Documents/code/bb-plugin-focus-board",
   isWorktree: false,
   providerId: null,
   workspaceDisplayKind: null,

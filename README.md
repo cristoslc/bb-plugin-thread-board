@@ -1,4 +1,4 @@
-# Thread Board
+# Focus Board
 
 <p align="center">
   A kanban board for your bb threads, grouped by what needs your attention.
@@ -7,14 +7,14 @@
 <p align="center">
   <a href="#install"><img alt="bb plugin" src="https://img.shields.io/badge/install%20with-bb%20plugin-8a2be2"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-339933">
-  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/cristoslc/bb-plugin-thread-board"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/cristoslc/bb-plugin-focus-board"></a>
 </p>
 
 <p align="center">
   <a href="docs/screenshots/board-thread-pane-dark.png">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-thread-pane-dark.png">
-      <img src="docs/screenshots/board-thread-pane-light.png" alt="The Thread Board with a thread conversation pane open beside it" width="100%">
+      <img src="docs/screenshots/board-thread-pane-light.png" alt="Focus Board with a thread conversation pane open beside it" width="100%">
     </picture>
   </a>
 </p>
@@ -70,14 +70,14 @@ the plugin SDK.
 Install straight from GitHub, no clone needed:
 
 ```sh
-bb plugin install https://github.com/cristoslc/bb-plugin-thread-board
+bb plugin install https://github.com/cristoslc/bb-plugin-focus-board
 ```
 
 To update later, run the same command again (add `--yes` to skip the
 confirmation prompt). To pin a version:
 
 ```sh
-bb plugin install git:https://github.com/cristoslc/bb-plugin-thread-board@v0.3.0
+bb plugin install git:https://github.com/cristoslc/bb-plugin-focus-board@v0.3.1
 ```
 
 ## Configuration
@@ -97,12 +97,12 @@ Any thread can be exempted from both sweeps with the card-menu
 The plugin registers one `bb` subcommand for managing its own state:
 
 ```sh
-bb thread-board done list [--json]
-bb thread-board done mark <thread-id>...
-bb thread-board done clear <thread-id>...
-bb thread-board sweep [--ids <id>...] [--confirm]
-bb thread-board config show
-bb thread-board config set <doneArchiveDays|idleArchiveDays> <days>
+bb focus-board done list [--json]
+bb focus-board done mark <thread-id>...
+bb focus-board done clear <thread-id>...
+bb focus-board sweep [--ids <id>...] [--confirm]
+bb focus-board config show
+bb focus-board config set <doneArchiveDays|idleArchiveDays> <days>
 ```
 
 All commands accept `--json`. The sweep never archives without `--confirm`;
@@ -122,7 +122,7 @@ cache read-only. Nothing leaves your machine.
 npm install
 bb plugin build
 bb plugin install . --yes
-bb plugin reload thread-board
+bb plugin reload focus-board
 # or: bb plugin dev
 npm test           # vitest
 npx tsc --noEmit   # typecheck
@@ -134,7 +134,7 @@ The screenshots in `docs/screenshots/` are captured with a harness in
 ## Contributing
 
 Issues and PRs are welcome at
-[github.com/cristoslc/bb-plugin-thread-board](https://github.com/cristoslc/bb-plugin-thread-board).
+[github.com/cristoslc/bb-plugin-focus-board](https://github.com/cristoslc/bb-plugin-focus-board).
 Run `npm test` and `npx tsc --noEmit` before submitting.
 
 ## License

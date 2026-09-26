@@ -19,5 +19,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // The harness imports the plugin's compiled CSS from ../../dist/, which
+    // sits outside this config root; without this allowance vite 403s it.
+    fs: { allow: [repoRoot] },
   },
 });

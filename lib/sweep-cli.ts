@@ -1,4 +1,4 @@
-// CLI-side sweep eligibility: the pure core of `bb thread-board sweep`.
+// CLI-side sweep eligibility: the pure core of `bb focus-board sweep`.
 //
 // The board's own sweep logic (lib/sweep.ts) works on the sidebar's live
 // thread view (PluginSidebarThread + threadState) and is not reusable

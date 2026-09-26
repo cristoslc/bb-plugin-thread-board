@@ -11,13 +11,13 @@ import { registeredNavPanel } from "./mock-sdk";
 // render time below, after these writes).
 const params = new URLSearchParams(window.location.search);
 const groupBy = params.get("groupBy") ?? "status";
-window.localStorage.setItem("thread-board:groupBy", groupBy);
-window.localStorage.setItem("thread-board:search", "");
-window.localStorage.setItem("thread-board:filter:projects", "[]");
-window.localStorage.setItem("thread-board:filter:providers", "[]");
-window.localStorage.setItem("thread-board:filter:states", "[]");
+window.localStorage.setItem("focus-board:groupBy", groupBy);
+window.localStorage.setItem("focus-board:search", "");
+window.localStorage.setItem("focus-board:filter:projects", "[]");
+window.localStorage.setItem("focus-board:filter:providers", "[]");
+window.localStorage.setItem("focus-board:filter:states", "[]");
 window.localStorage.setItem(
-  "thread-board:paneWidth",
+  "focus-board:paneWidth",
   params.get("paneWidth") ?? "480",
 );
 

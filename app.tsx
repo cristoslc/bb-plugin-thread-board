@@ -48,9 +48,9 @@ import {
 } from "./components/preferences";
 import { EmptyState } from "./components/empty-state";
 
-const GROUP_BY_KEY = "thread-board:groupBy";
-const FILTER_KEY = "thread-board:filter";
-const SEARCH_KEY = "thread-board:search";
+const GROUP_BY_KEY = "focus-board:groupBy";
+const FILTER_KEY = "focus-board:filter";
+const SEARCH_KEY = "focus-board:search";
 
 /** Adapt metadata records ({doneAt: ISO, keep?}) into the sweep's extras
  *  shape ({doneAt: epoch-ms, keep?}). */
@@ -792,7 +792,7 @@ function BoardPage() {
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "board",
-    title: "Thread Board",
+    title: "Focus Board",
     icon: "Columns2",
     path: "board",
     component: BoardPage,

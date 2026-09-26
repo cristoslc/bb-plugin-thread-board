@@ -10,7 +10,7 @@ import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport
 // 36px touch target on coarse pointers (phones), matching bb's own headers.
 const HEADER_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 text-muted-foreground hover:text-foreground`;
 
-const PANE_WIDTH_KEY = "thread-board:paneWidth";
+const PANE_WIDTH_KEY = "focus-board:paneWidth";
 const PANE_MIN_WIDTH = 320;
 const PANE_MAX_WIDTH = 900;
 const PANE_DEFAULT_WIDTH = 480;

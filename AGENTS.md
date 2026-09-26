@@ -1,4 +1,4 @@
-# AGENTS.md — bb-plugin-thread-board
+# AGENTS.md — bb-plugin-focus-board
 
 ## Test command
 

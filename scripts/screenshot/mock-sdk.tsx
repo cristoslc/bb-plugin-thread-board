@@ -63,17 +63,27 @@ export function useSdk(): unknown {
     hosts: {
       list: async () => [{ id: "host_local", name: "MacBook Pro", lifecycle: { phase: "active" } }],
     },
-    projects: { create: async () => ({}) },
+    projects: {
+      list: async () => SIM_PROJECTS.map((project) => ({ ...project, gitRemoteUrl: null })),
+      create: async () => ({}),
+    },
   };
 }
 
+const rpcCall = async (method: string, args?: unknown): Promise<unknown> => {
+  if (method === "done_list") return { doneIds: SIM_DONE_IDS, records: {} };
+  if (method === "sweep_config_get") {
+    return { doneArchiveDays: 7, idleArchiveDays: 30 };
+  }
+  return {};
+};
+
+// Module-level singleton: app.tsx's mount effect depends on the rpc object
+// identity, so a fresh object per render would re-run the effect forever.
+const rpc = { call: rpcCall };
+
 export function useRpc(): { call: (method: string, args?: unknown) => Promise<unknown> } {
-  return {
-    call: async (method: string) => {
-      if (method === "done_list") return { doneIds: SIM_DONE_IDS };
-      return {};
-    },
-  };
+  return rpc;
 }
 
 export function useRealtime(_channel: string, _handler: (payload: unknown) => void): void {

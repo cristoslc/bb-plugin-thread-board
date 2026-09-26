@@ -183,7 +183,7 @@ export function Board({
                   ? (event) => {
                       event.preventDefault();
                       setDragOverColumn(null);
-                      const threadId = event.dataTransfer.getData("text/thread-board-id");
+                      const threadId = event.dataTransfer.getData("text/focus-board-id");
                       if (threadId !== "") dropHandler(threadId);
                     }
                   : undefined

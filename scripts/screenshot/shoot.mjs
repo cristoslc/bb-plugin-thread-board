@@ -25,7 +25,15 @@ const browser = await puppeteer.launch({
   defaultViewport: VIEWPORTS.desktop,
   args: ["--hide-scrollbars"],
 });
-const page = await browser.newPage();
+let page = await browser.newPage();
+
+// Each theme pass gets a fresh page: reusing one page across viewport flips,
+// navigations, and theme changes eventually wedges Chrome's emulation state
+// (navigation never dispatches domcontentloaded).
+async function freshPage() {
+  await page.close();
+  page = await browser.newPage();
+}
 
 let currentTheme = "dark";
 
@@ -38,12 +46,22 @@ async function setTheme(theme) {
 }
 
 async function setViewport(name) {
-  await page.setViewport(VIEWPORTS[name]);
+  // CDP emulation calls occasionally race Chrome's internal state and throw;
+  // a short retry reliably gets through.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.setViewport(VIEWPORTS[name]);
+      return;
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
 }
 
 async function goto(query) {
-  await page.goto(`${BASE}${query}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
-  await page.waitForSelector("section[aria-label]", { timeout: 15_000 });
+  await page.goto(`${BASE}${query}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.waitForSelector("section[aria-label]", { timeout: 30_000 });
   await setTheme(currentTheme);
   await new Promise((resolve) => setTimeout(resolve, 400));
 }
@@ -88,6 +106,7 @@ await mkdir(OUT, { recursive: true });
 for (const theme of ["dark", "light"]) {
   currentTheme = theme;
   console.log(`${theme} theme`);
+  await freshPage();
   await captureAll();
 }
 
