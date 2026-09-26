@@ -34,11 +34,24 @@ export interface BoardAssembly {
   /** Parent id → children that render as nested rows under the parent card. */
   nestedChildrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   /**
-   * Parent id → ALL its visible children, from the raw family index. Drives
-   * the parent card's child-count chip (and chevron), which counts every
-   * visible child even when some render standalone (promoted / cross-axis).
+   * Parent id → ALL its children (from the raw family index, archived
+   * included). Drives the parent card's child-count chip (and chevron),
+   * which counts every child even when some render standalone (promoted /
+   * cross-axis). Empty when nesting is disabled — chips are meaningless on a
+   * flat board.
    */
   childCountByParent: ReadonlyMap<string, number>;
+}
+
+export interface NestingOptions {
+  /**
+   * R3 "Nest child threads" toggle. `false` renders a fully flat board:
+   * every visible (non-archived) thread is a standalone card in its own
+   * column slot, no promotion logic, no nested rows, no chips, no `+N` —
+   * and archived children do not render at all (they can never be
+   * standalone). Default `true`.
+   */
+  nestingEnabled?: boolean;
 }
 
 /**
@@ -49,6 +62,12 @@ export interface BoardAssembly {
  * a nested row. `childCountByParent` (from the raw index) is what the
  * child-count chip counts, so a parent still shows its family size when a
  * child stands alone.
+ *
+ * R2: archived children never take standalone column slots. They are
+ * excluded from column building entirely and always nest under their parent
+ * (archived overrides the promotion and axis-match rules), so an archived
+ * child stays under its parent in every grouping. An archived child whose
+ * parent is not in the input (archived or deleted parent) renders nowhere.
  */
 export function assembleBoard(
   threads: readonly PluginSidebarThread[],
@@ -57,17 +76,32 @@ export function assembleBoard(
   frozenColumns: ReadonlyMap<string, { id: string; label: string }> = new Map(),
   doneIds: ReadonlySet<string> = new Set(),
   now: number = Date.now(),
+  options: NestingOptions = {},
 ): BoardAssembly {
+  const nestingEnabled = options.nestingEnabled ?? true;
+  // Archived threads never take a column slot in either mode; when nesting
+  // is OFF they render nowhere at all (matching bb's sidebar, where
+  // archiving removes the thread from the list).
+  const columnThreads = threads.filter((thread) => !thread.isArchived);
+  if (!nestingEnabled) {
+    return {
+      columns: buildColumns(columnThreads, groupBy, context, frozenColumns, doneIds, now),
+      nestedChildrenByParent: new Map(),
+      childCountByParent: new Map(),
+    };
+  }
   // One family index serves both halves: the nesting pass and the chip
-  // counts both read the same raw parent→children map.
+  // counts both read the same raw parent→children map (archived children
+  // included — they stay under the parent).
   const familyIndex = buildFamilyIndex(threads);
   const nested = nestUnderParents(
-    buildColumns(threads, groupBy, context, frozenColumns, doneIds, now),
+    buildColumns(columnThreads, groupBy, context, frozenColumns, doneIds, now),
     threads,
     groupBy,
     context,
     now,
     familyIndex,
+    options,
   );
   const childCountByParent = new Map<string, number>();
   for (const [parentId, children] of familyIndex.childrenByParent) {
@@ -87,13 +121,13 @@ export interface FamilyFilterResult {
 }
 
 /**
- * Build parent→children / child→parent maps from the visible thread set.
- * The caller passes the already-filtered visible set (hidden and archived
- * threads are excluded by app.tsx before this runs), so hidden children never
- * nest. A `parentThreadId` that points at a thread not in the set (archived,
- * deleted) leaves the child a root — flat fallback. Corrupt parent cycles are
- * treated as roots: cycle members keep their cards instead of hanging the
- * board.
+ * Build parent→children / child→parent maps from the non-hidden thread set.
+ * The caller passes the already-filtered non-hidden set (app.tsx excludes
+ * only hidden threads — archived threads are INCLUDED since R2, so archived
+ * children stay under their parent). A `parentThreadId` that points at a
+ * thread not in the set (deleted) leaves the child a root — flat fallback.
+ * Corrupt parent cycles are treated as roots: cycle members keep their cards
+ * instead of hanging the board.
  */
 export function buildFamilyIndex(threads: readonly PluginSidebarThread[]): FamilyIndex {
   const present = new Set(threads.map((thread) => thread.id));
@@ -146,6 +180,8 @@ export function buildFamilyIndex(threads: readonly PluginSidebarThread[]): Famil
  * Does a child stay under its parent in this grouping? Returns `true` to
  * nest, `false` to keep the child flat.
  *
+ * - R2: an archived child ALWAYS nests — it never takes a standalone column
+ *   slot, in any grouping (archived overrides promotion and axis-match).
  * - Promotion (Attention grouping): a child whose state column strictly
  *   precedes its parent's stands alone in its own state column — never bury
  *   a Needs-you child. Done is the rightmost lane, so any live child of a
@@ -162,6 +198,7 @@ function childNests(
   groupBy: GroupBy,
   now: number,
 ): boolean {
+  if (child.isArchived) return true; // R2: archived children always nest
   if (groupBy === "status") {
     return stateRank(threadState(child)) >= stateRank(threadState(parent));
   }
@@ -205,9 +242,17 @@ export function nestUnderParents(
   context: GroupingContext,
   now: number = Date.now(),
   familyIndex: FamilyIndex = buildFamilyIndex(threads),
+  options: NestingOptions = {},
 ): NestingResult {
   const index = familyIndex;
   const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+
+  // R3: nesting disabled — a fully flat board. Columns pass through
+  // untouched (the caller has already kept archived threads out of them);
+  // no child nests, no rows, no chips.
+  if (options.nestingEnabled === false) {
+    return { columns: [...columns], childrenByParent: new Map() };
+  }
 
   // Decide, per child, nest vs. flat. Promoted/flat children keep their
   // column placement; nested children are removed from columns.
@@ -264,11 +309,14 @@ export function grandchildCountFor(
 }
 
 /**
- * Family-aware filtering: a family passes when ANY of its visible members
- * passes the filters or search; every visible member of a passing family is
- * kept, with non-matching members recorded in `dimmedIds` so the board can
- * render them at reduced opacity. A family where nothing matches is dropped
- * whole.
+ * Family-aware filtering: a family passes when ANY of its members passes the
+ * filters or search; every member of a passing family is kept, with
+ * non-matching members recorded in `dimmedIds` so the board can render them
+ * at reduced opacity. A family where nothing matches is dropped whole.
+ *
+ * R2: archived members never contribute a match (an archived child matching
+ * alone does not surface the family) — they ride along with a passing
+ * family, dimmed, and render under the parent with their archived treatment.
  */
 export function filterFamilies(
   threads: readonly PluginSidebarThread[],
@@ -276,13 +324,8 @@ export function filterFamilies(
   filter: FilterState,
   searchQuery: string,
 ): FamilyFilterResult {
-  const passes = (thread: PluginSidebarThread): boolean => {
-    if (filter.projects.size > 0 && !filter.projects.has(thread.projectId)) return false;
-    if (filter.providers.size > 0 && !filter.providers.has(thread.providerId)) return false;
-    if (filter.states.size > 0 && !filter.states.has(threadState(thread))) return false;
-    if (searchQuery.trim() !== "" && !matchesFilter(thread, searchQuery.trim())) return false;
-    return true;
-  };
+  const passes = (thread: PluginSidebarThread): boolean =>
+    threadPassesFilter(thread, filter, searchQuery);
 
   // Group visible threads into families by their root, so a parent and its
   // descendants pass or fail together.
@@ -312,4 +355,36 @@ export function filterFamilies(
     }
   }
   return { kept, dimmedIds };
+}
+
+/**
+ * The per-thread predicate shared by both filters: state/project/provider
+ * filters plus search. R2: an archived thread NEVER passes — archived
+ * members cannot contribute a match (family filtering) and cannot render
+ * standalone (individual filtering).
+ */
+function threadPassesFilter(thread: PluginSidebarThread, filter: FilterState, searchQuery: string): boolean {
+  if (thread.isArchived) return false;
+  if (filter.projects.size > 0 && !filter.projects.has(thread.projectId)) return false;
+  if (filter.providers.size > 0 && !filter.providers.has(thread.providerId)) return false;
+  if (filter.states.size > 0 && !filter.states.has(threadState(thread))) return false;
+  if (searchQuery.trim() !== "" && !matchesFilter(thread, searchQuery.trim())) return false;
+  return true;
+}
+
+/**
+ * R3: per-thread filtering for the flat board (nesting toggle OFF). No
+ * family keep, no dimming — each thread passes or fails on its own, and
+ * archived threads never render in flat mode.
+ */
+export function filterIndividually(
+  threads: readonly PluginSidebarThread[],
+  filter: FilterState,
+  searchQuery: string,
+): FamilyFilterResult {
+  const kept: PluginSidebarThread[] = [];
+  for (const thread of threads) {
+    if (threadPassesFilter(thread, filter, searchQuery)) kept.push(thread);
+  }
+  return { kept, dimmedIds: new Set() };
 }

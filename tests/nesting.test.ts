@@ -12,6 +12,7 @@ import {
   assembleBoard,
   buildFamilyIndex,
   filterFamilies,
+  filterIndividually,
   grandchildCountFor,
   nestUnderParents,
 } from "../components/nesting";
@@ -89,15 +90,24 @@ describe("buildFamilyIndex", () => {
     expect(ids(index.childrenByParent.get("a"))).toEqual(["c"]);
   });
 
-  it("excludes hidden children: caller passes the visible set, hidden never nests", () => {
-    // Caller contract: app.tsx filters hidden/archived out before calling, so
-    // this test pins the contract, not the filter itself — the index built
-    // from the visible set must nest only visible children.
+  it("excludes hidden children: caller passes the non-hidden set, hidden never nests", () => {
+    // Caller contract: app.tsx filters hidden out before calling (archived is
+    // INCLUDED since refinement round 2), so this test pins the contract —
+    // the index built from the non-hidden set must nest only its members.
     const parent = thread({ id: "p" });
     const visibleChild = thread({ id: "c", parentThreadId: "p" });
     const index = buildFamilyIndex([parent, visibleChild]);
     expect(ids(index.childrenByParent.get("p"))).toEqual(["c"]);
     expect(index.rootIds.has("c")).toBe(false);
+  });
+
+  it("includes archived children in the index (R2: archived children stay under the parent)", () => {
+    const parent = thread({ id: "p" });
+    const liveChild = thread({ id: "c", parentThreadId: "p" });
+    const archivedChild = thread({ id: "a", parentThreadId: "p", isArchived: true });
+    const index = buildFamilyIndex([parent, liveChild, archivedChild]);
+    expect(ids(index.childrenByParent.get("p"))).toEqual(["c", "a"]);
+    expect(index.parentOf.get("a")).toBe("p");
   });
 });
 
@@ -483,6 +493,262 @@ describe("assembleBoard — the composition app.tsx wires", () => {
     // …but the parent card still reports its one visible child. The card
     // renders the chip whenever this count is > 0, even with zero nested
     // rows; only the chevron (which toggles rows) stays gated on rows.
+    expect(result.childCountByParent.get("p")).toBe(1);
+  });
+});
+
+describe("assembleBoard — archived children (R2)", () => {
+  it("an archived child nests under its parent and never takes a column slot", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const result = assembleBoard(
+      [parent, archivedChild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["a"]);
+    expect(columnOf(result.columns, "a")).toBeUndefined();
+    // chip counts include archived children
+    expect(result.childCountByParent.get("p")).toBe(1);
+  });
+
+  it("an archived child never promotes in Attention grouping (archived overrides promotion)", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR }); // idle
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      isUnread: true, // live it would promote to unread
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const result = assembleBoard(
+      [parent, archivedChild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(idsIn(result.columns, "unread")).not.toContain("a");
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["a"]);
+  });
+
+  it("an archived cross-project child stays under the parent (archived overrides axis-match)", () => {
+    const parent = thread({ id: "p", projectId: "proj_a" });
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      projectId: "proj_b",
+      isArchived: true,
+      updatedAt: NOW - HOUR,
+    });
+    const result = assembleBoard(
+      [parent, archivedChild],
+      "project",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["a"]);
+    expect(columnOf(result.columns, "a")).toBeUndefined();
+    expect(columnOf(result.columns, "a")?.id).toBeUndefined();
+  });
+
+  it("an archived child with no present parent renders nowhere (archived orphans vanish)", () => {
+    const archivedOrphan = thread({ id: "a", parentThreadId: "gone", isArchived: true });
+    const result = assembleBoard([archivedOrphan], "status", CONTEXT, new Map(), new Set(), NOW);
+    expect(columnOf(result.columns, "a")).toBeUndefined();
+    expect(result.nestedChildrenByParent.has("gone")).toBe(false);
+  });
+
+  it("an archived family vanishes whole: archived parent excluded from columns, archived child renders nowhere", () => {
+    const archivedParent = thread({ id: "p", isArchived: true });
+    const archivedChild = thread({ id: "a", parentThreadId: "p", isArchived: true });
+    const result = assembleBoard(
+      [archivedParent, archivedChild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(columnOf(result.columns, "p")).toBeUndefined();
+    expect(columnOf(result.columns, "a")).toBeUndefined();
+  });
+
+  it("a live parent keeps archived children in the chip count alongside live children", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const liveChild = thread({ id: "c", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      updatedAt: NOW - 3 * HOUR,
+    });
+    const result = assembleBoard(
+      [parent, liveChild, archivedChild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+    );
+    expect(result.childCountByParent.get("p")).toBe(2);
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["c", "a"]);
+  });
+});
+
+describe("filterFamilies with archived members (R2)", () => {
+  it("archived members ride along with a passing family (dimmed), never contribute a match", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const index = buildFamilyIndex([parent, archivedChild]);
+    const result = filterFamilies([parent, archivedChild], index, EMPTY_FILTER, "");
+    expect(result.kept.map((t) => t.id).sort()).toEqual(["a", "p"]);
+    expect(result.dimmedIds.has("a")).toBe(true);
+    expect(result.dimmedIds.has("p")).toBe(false);
+  });
+
+  it("an archived child matching alone does not surface the family", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR }); // idle
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      isUnread: true,
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const index = buildFamilyIndex([parent, archivedChild]);
+    const result = filterFamilies(
+      [parent, archivedChild],
+      index,
+      { projects: new Set(), providers: new Set(), states: new Set(["unread"]) },
+      "",
+    );
+    expect(result.kept).toHaveLength(0);
+  });
+});
+
+describe("filterIndividually — nesting toggle OFF filtering (R3)", () => {
+  it("filters per-thread: a matching child is kept on its own (no family keep, no dimming)", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR }); // idle
+    const child = thread({ id: "c", parentThreadId: "p", isUnread: true, updatedAt: NOW - 2 * HOUR });
+    const result = filterIndividually(
+      [parent, child],
+      { projects: new Set(), providers: new Set(), states: new Set(["unread"]) },
+      "",
+    );
+    expect(result.kept.map((t) => t.id)).toEqual(["c"]);
+    expect(result.dimmedIds.size).toBe(0);
+  });
+
+  it("composes with search like the family filter's per-thread predicate", () => {
+    const parent = thread({ id: "p" });
+    const child = thread({ id: "c", parentThreadId: "p" });
+    const result = filterIndividually([parent, child], EMPTY_FILTER, "c");
+    expect(result.kept.map((t) => t.id)).toEqual(["c"]);
+    expect(result.dimmedIds.size).toBe(0);
+  });
+
+  it("never keeps archived threads (archived children do not render in flat mode)", () => {
+    const archived = thread({ id: "a", isArchived: true });
+    const result = filterIndividually([archived], EMPTY_FILTER, "");
+    expect(result.kept).toHaveLength(0);
+  });
+});
+
+describe("assembleBoard — nesting toggle OFF (R3)", () => {
+  it("children render flat in their own column slots, no promotion logic", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR }); // idle
+    const child = thread({ id: "c", parentThreadId: "p", isUnread: true, updatedAt: NOW - 2 * HOUR });
+    const result = assembleBoard(
+      [parent, child],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+      { nestingEnabled: false },
+    );
+    expect(idsIn(result.columns, "unread")).toContain("c");
+    expect(result.nestedChildrenByParent.size).toBe(0);
+    expect(result.childCountByParent.size).toBe(0);
+  });
+
+  it("chips are empty: a parent with children reports no child count when nesting is OFF", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const child = thread({ id: "c", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const result = assembleBoard(
+      [parent, child],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+      { nestingEnabled: false },
+    );
+    expect(result.childCountByParent.get("p")).toBeUndefined();
+    expect(result.nestedChildrenByParent.get("p")).toBeUndefined();
+  });
+
+  it("deep descendants render flat too (no depth cap, no +N source)", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const child = thread({ id: "c", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const grandchild = thread({ id: "g", parentThreadId: "c", updatedAt: NOW - 3 * HOUR });
+    const result = assembleBoard(
+      [parent, child, grandchild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+      { nestingEnabled: false },
+    );
+    const allIds = result.columns.flatMap((col) => col.threads.map((t) => t.id)).sort();
+    expect(allIds).toEqual(["c", "g", "p"]);
+    expect(result.nestedChildrenByParent.size).toBe(0);
+  });
+
+  it("archived children do not render at all when nesting is OFF", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const archivedChild = thread({
+      id: "a",
+      parentThreadId: "p",
+      isArchived: true,
+      updatedAt: NOW - 2 * HOUR,
+    });
+    const result = assembleBoard(
+      [parent, archivedChild],
+      "status",
+      CONTEXT,
+      new Map(),
+      new Set(),
+      NOW,
+      { nestingEnabled: false },
+    );
+    expect(columnOf(result.columns, "a")).toBeUndefined();
+    expect(result.nestedChildrenByParent.size).toBe(0);
+  });
+
+  it("nesting ON remains the default: omitted options behave like nestingEnabled true", () => {
+    const parent = thread({ id: "p", updatedAt: NOW - HOUR });
+    const child = thread({ id: "c", parentThreadId: "p", updatedAt: NOW - 2 * HOUR });
+    const result = assembleBoard([parent, child], "status", CONTEXT, new Map(), new Set(), NOW);
+    expect(ids(result.nestedChildrenByParent.get("p") ?? [])).toEqual(["c"]);
     expect(result.childCountByParent.get("p")).toBe(1);
   });
 });
