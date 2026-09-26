@@ -140,24 +140,37 @@ function ChildRow({
         onOpenThread(child.id);
       }}
       className={cn(
-        "flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-[11px] leading-snug text-muted-foreground",
-        "transition-colors hover:bg-accent/50 hover:text-foreground",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        // Fat row: a compact card-like container — the full title wraps over
+        // up to 2 lines (parent cards use line-clamp-2; children match). No
+        // branch line, no project line, no drag handle: children stay
+        // visually subordinate to parent cards.
+        "block rounded-md border border-border/50 bg-muted/40 px-2 py-1.5 text-left",
+        "transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "opacity-70 hover:opacity-100",
+        child.isArchived && "saturate-50",
         dimmed && "opacity-50",
         isActive && "ring-2 ring-ring",
       )}
     >
-      <span
-        className={cn(
-          "inline-block size-1.5 shrink-0 rounded-full",
-          DOT_CLASS[threadState(child)] ?? "bg-muted-foreground/30",
-        )}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1 truncate">{child.displayTitle}</span>
-      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
-        {relativeTime(child.updatedAt, now)}
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-block size-1.5 shrink-0 rounded-full",
+            DOT_CLASS[threadState(child)] ?? "bg-muted-foreground/30",
+          )}
+          aria-hidden
+        />
+        {child.isArchived ? (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+            <Icon name="Archive" className="size-3" aria-hidden />
+            archived
+          </span>
+        ) : null}
+        <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+          {relativeTime(child.updatedAt, now)}
+        </span>
+      </div>
+      <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug">{child.displayTitle}</p>
     </a>
   );
   if (menuActions === undefined) return row;
@@ -310,7 +323,7 @@ export function ThreadCard({
       </div>
       {hasRows && !collapsed && onOpenThread !== undefined ? (
         <div className="ml-3 mt-1 border-l border-border/70 pl-2">
-          <ul className="flex flex-col gap-0.5">
+          <ul className="flex flex-col gap-1">
             {children.map((child) => {
               const childDone = doneIds?.has(child.id) ?? false;
               const grandchildCount = grandchildCountFor(child, childrenByParent ?? new Map());

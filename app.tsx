@@ -25,6 +25,7 @@ import {
 import {
   buildFamilyIndex,
   filterFamilies,
+  filterIndividually,
   assembleBoard,
 } from "./components/nesting";
 import { doneAtToEpochMs } from "./lib/done-metadata";
@@ -40,6 +41,11 @@ import {
   type DoneAgeSource,
 } from "./lib/sweep";
 import { useSweepClickAway } from "./components/board";
+import {
+  NEST_CHILDREN_KEY,
+  nestStoredValue,
+  parseNestStored,
+} from "./components/preferences";
 import { EmptyState } from "./components/empty-state";
 
 const GROUP_BY_KEY = "thread-board:groupBy";
@@ -168,7 +174,8 @@ function BoardPage() {
   // The sidebar view refreshes over its own realtime subscription, but
   // archive/unarchive changes also bump the pane's button state and the
   // archived lookup that keeps the pane usable after archiving. Only the
-  // pane needs archived threads (the board hides them), so a minimal shape
+  // pane needs archived threads (the board's columns exclude them; archived
+  // children render only as rows under their live parent), so a minimal shape
   // from the SDK list is enough.
   const [archiveTick, setArchiveTick] = useState(0);
   const [archivedThreads, setArchivedThreads] = useState<
@@ -252,6 +259,10 @@ function BoardPage() {
     ),
   }));
   const [search, setSearch] = useState<string>(() => readStored(SEARCH_KEY, [], ""));
+  // R3 "Nest child threads" toggle, default ON, persisted like groupBy.
+  const [nestChildren, setNestChildren] = useState<boolean>(() =>
+    parseNestStored(readStored(NEST_CHILDREN_KEY, ["on", "off"], "on")),
+  );
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   // Sweep arm state: at most one armed column at a time. The candidate id
   // list is captured at arm time and frozen — late arrivals never join.
@@ -279,32 +290,49 @@ function BoardPage() {
     setSearch(value);
     writeStored(SEARCH_KEY, value);
   }, []);
+  const persistNestChildren = useCallback((enabled: boolean) => {
+    setNestChildren(enabled);
+    writeStored(NEST_CHILDREN_KEY, nestStoredValue(enabled));
+  }, []);
 
   // The sidebar view pushes fresh thread data continuously; this signal
   // additionally fires on host-side changes so cards never sit stale.
   useRealtime("thread-list-changed", () => {});
 
-  const visibleThreads = useMemo(
-    () => threads.filter((thread) => !thread.isHidden && !thread.isArchived),
+  // R2: the family pipeline runs on the NON-HIDDEN set — archived threads
+  // are included so an archived child stays under its parent. Archived
+  // threads never render standalone; `assembleBoard` keeps them out of the
+  // columns in both modes.
+  const nonHiddenThreads = useMemo(
+    () => threads.filter((thread) => !thread.isHidden),
     [threads],
+  );
+  const liveThreads = useMemo(
+    () => nonHiddenThreads.filter((thread) => !thread.isArchived),
+    [nonHiddenThreads],
   );
 
   const filterOptions = useMemo(() => {
     const projectIds = new Set<string>();
     const providerIds = new Set<string>();
-    for (const thread of visibleThreads) {
+    for (const thread of liveThreads) {
       projectIds.add(thread.projectId);
       providerIds.add(thread.providerId);
     }
     return { projectIds, providerIds };
-  }, [visibleThreads]);
+  }, [liveThreads]);
 
-  // Family-aware filtering replaces per-thread filtering: a family passes
-  // when any visible member matches, non-matching members render dimmed.
-  const familyIndex = useMemo(() => buildFamilyIndex(visibleThreads), [visibleThreads]);
+  // Family-aware filtering replaces per-thread filtering when nesting is ON:
+  // a family passes when any member matches, non-matching members render
+  // dimmed (archived riders always dim; they never contribute a match).
+  // Nesting OFF means a fully flat board — per-thread filtering again.
+  const familyIndex = useMemo(() => buildFamilyIndex(nonHiddenThreads), [nonHiddenThreads]);
   const familyFiltered = useMemo(
-    () => filterFamilies(visibleThreads, familyIndex, filter, search.trim()),
-    [visibleThreads, familyIndex, filter, search],
+    () =>
+      nestChildren
+        ? filterFamilies(nonHiddenThreads, familyIndex, filter, search.trim())
+        : filterIndividually(nonHiddenThreads, filter, search.trim()),
+    [nestChildren, nonHiddenThreads, familyIndex, filter, search],
   );
   const filtered = familyFiltered.kept;
 
@@ -325,11 +353,14 @@ function BoardPage() {
   // map (not the raw family index) drives which children render as nested
   // rows, so a promoted or cross-axis child appears only as its standalone
   // card — never both standalone AND nested. The raw index's counts drive the
-  // parent card's child-count chip, which counts every visible child.
+  // parent card's child-count chip, which counts every child (archived
+  // included). With nesting OFF the board is flat: no rows, no chips.
   const assembly = useMemo(
     () =>
-      assembleBoard(searched, groupBy, { projects, providers }, frozenColumns, doneIds),
-    [searched, groupBy, projects, providers, frozenColumns, doneIds],
+      assembleBoard(searched, groupBy, { projects, providers }, frozenColumns, doneIds, Date.now(), {
+        nestingEnabled: nestChildren,
+      }),
+    [searched, groupBy, projects, providers, frozenColumns, doneIds, nestChildren],
   );
   const columns = assembly.columns;
 
@@ -390,7 +421,7 @@ function BoardPage() {
   // the effect dependency (cheap string equality) and is re-parsed below.
   const visibleRefKey = useMemo(
     () =>
-      visibleThreads
+      liveThreads
         .flatMap((thread) => {
           const repoBase = repoBaseByProject[thread.projectId];
           const repo = repoBase === undefined ? null : resolveRepoSlug(repoBase);
@@ -402,7 +433,7 @@ function BoardPage() {
         })
         .sort()
         .join(","),
-    [visibleThreads, repoBaseByProject],
+    [liveThreads, repoBaseByProject],
   );
   useEffect(() => {
     if (visibleRefKey === "") {
@@ -463,7 +494,13 @@ function BoardPage() {
 
   const anyFilterActive =
     filter.projects.size > 0 || filter.providers.size > 0 || filter.states.size > 0 || searchActive;
-  const emptyBecauseFiltered = visibleThreads.length > 0 && searched.length === 0 && anyFilterActive;
+  // Archived riders sit in `searched` when nesting is ON (they stay under
+  // their parent); board-level counts stay live-thread counts.
+  const boardCount = useMemo(
+    () => searched.filter((thread) => !thread.isArchived).length,
+    [searched],
+  );
+  const emptyBecauseFiltered = liveThreads.length > 0 && boardCount === 0 && anyFilterActive;
   const dimmedIds = familyFiltered.dimmedIds;
 
   // The open pane's thread can vanish from the active view (archived,
@@ -576,15 +613,17 @@ function BoardPage() {
           projects={projects}
           providers={providers}
           onCreateProject={createProject}
-          totalCount={searched.length}
+          totalCount={boardCount}
           onClearFilters={() => {
             persistFilter({ projects: new Set(), providers: new Set(), states: new Set() });
             persistSearch("");
           }}
           anyFilterActive={anyFilterActive}
           onNewThread={() => actions.openNewThread({ focusPrompt: true })}
+          nestChildren={nestChildren}
+          onNestChildrenChange={persistNestChildren}
         />
-        {searched.length === 0 ? (
+        {boardCount === 0 ? (
           <div className="p-4">
             <EmptyState>
               {emptyBecauseFiltered

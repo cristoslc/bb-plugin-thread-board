@@ -28,9 +28,12 @@
   Unread / Idle).
 - **Search** across thread titles and ids.
 - **Nest** subthreads beneath their parent card, Jira-subissue style:
-  collapsible child rows on the card, with needs-you children promoted to
-  their own column so they never hide, and family-aware filtering that
-  surfaces the whole family when any member matches.
+  collapsible child rows on the card (full title, up to two lines), with
+  needs-you children promoted to their own column so they never hide, and
+  family-aware filtering that surfaces the whole family when any member
+  matches. Archived children stay under their parent, dimmed with an
+  archived mark, until unarchived from the pane. A "Nest child threads"
+  toggle in the toolbar flattens the board to independent cards.
 - **Sweep** old Done threads and long-idle threads to Archive with a
   two-click arm-then-confirm button per column: the first click arms (shows
   `Sweep N → Archive ?`, highlights and gathers exactly the eligible
@@ -58,8 +61,9 @@
 The board is a nav panel at **Thread Board** in the sidebar. It reads bb's
 live thread view through the plugin SDK's sidebar hooks, so it updates in
 real time. It writes through bb's own stores: pin state, read state, and the
-Done marks the sweep reads — never thread content. Hidden and archived
-threads are excluded.
+Done marks the sweep reads — never thread content. Hidden threads are
+excluded; archived threads render only as rows nested under their live
+parent (or not at all when nesting is off).
 
 ## Screenshots
 
