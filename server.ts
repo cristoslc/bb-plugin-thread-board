@@ -1,11 +1,20 @@
 // bb-plugin-thread-board — a BB plugin backend entry.
 //
 // The board reads bb's live thread view through the frontend sidebar hooks.
-// The only server state is the set of threads the user marked "Done" from the
-// pane: one KV row, exposed over RPC, broadcast over realtime so every open
-// board updates.
+// The only server state is the set of threads the user marked "Done" from
+// the pane: one record per thread in the board's plugin-metadata namespace
+// (key "done" → { doneAt, keep? }), exposed over RPC, broadcast over
+// realtime so every open board updates. Plugin metadata writes emit no
+// thread realtime event, so the explicit done-changed publish stays.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import {
+  DONE_METADATA_KEY,
+  parseDoneRecord,
+  stampDone,
+  type DoneRecord,
+} from "./lib/done-metadata";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 
 export const rpcContract = defineRpcContract({
   done_list: {
@@ -18,30 +27,138 @@ export const rpcContract = defineRpcContract({
   },
 });
 
+/** Realtime signal after every done write. Payload is { threadId, done }
+ *  (was { count } before the metadata migration); consumers refetch on the
+ *  event rather than reading the payload. */
 const DONE_CHANGED = "done-changed";
-const DONE_KEY = "done-thread-ids";
+/** Legacy KV key written before the metadata migration. */
+const LEGACY_DONE_KEY = "done-thread-ids";
 
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
 
-  async function readDone(): Promise<string[]> {
-    return (await bb.storage.kv.get<string[]>(DONE_KEY)) ?? [];
+  async function readDoneRecord(
+    threadId: string,
+  ): Promise<DoneRecord | null> {
+    // getPluginMetadata returns an untyped namespace record; cast to the
+    // JsonValue contract parseDoneRecord validates.
+    const namespace = await bb.sdk.threads.getPluginMetadata({ threadId });
+    const value = (namespace as Record<string, JsonValue>)[DONE_METADATA_KEY];
+    return parseDoneRecord(value);
   }
-  async function writeDone(ids: string[]): Promise<void> {
-    await bb.storage.kv.set(DONE_KEY, ids);
-    bb.realtime.publish(DONE_CHANGED, { count: ids.length });
+
+  async function writeDoneRecord(threadId: string, done: boolean) {
+    const now = new Date();
+    if (done) {
+      const existing = await readDoneRecord(threadId);
+      const record = stampDone(existing, now);
+      await bb.sdk.threads.updatePluginMetadata({
+        threadId,
+        set: { [DONE_METADATA_KEY]: record },
+      });
+    } else {
+      await bb.sdk.threads.updatePluginMetadata({
+        threadId,
+        remove: [DONE_METADATA_KEY],
+      });
+    }
+  }
+
+  /**
+   * Legacy KV "done-thread-ids" held either a plain string[] (main's
+   * original shape) or a per-thread record map with epoch-ms doneAt and an
+   * optional keep flag (the sweep sibling's stopgap). Import both into
+   * per-thread metadata, then delete the key: metadata is the only store
+   * from here on. Checks each thread's existing record first, so a
+   * partial import converges on the next read and the key is deleted only
+   * once every entry is imported. Runs before both done_list and done_set:
+   * a done=false written while the legacy value is still present must not
+   * be resurrected by a later import.
+   */
+  async function importLegacyDone(): Promise<void> {
+    const legacy: unknown = await bb.storage.kv.get(LEGACY_DONE_KEY);
+    if (legacy === undefined || legacy === null) return;
+    const keepFlag = (keep: unknown) =>
+      typeof keep === "boolean" && keep ? { keep: true } : {};
+    if (Array.isArray(legacy)) {
+      // Main's shape: bare thread ids with no age data — stamp at import.
+      const iso = new Date().toISOString();
+      for (const id of legacy) {
+        if (typeof id !== "string") {
+          throw new Error(`legacy done ids: non-string entry ${JSON.stringify(id)}`);
+        }
+        await importOne(id, { doneAt: iso });
+      }
+    } else if (typeof legacy === "object") {
+      // Sweep sibling's shape: record map with epoch-ms doneAt, keep flag.
+      for (const [threadId, entry] of Object.entries(
+        legacy as Record<string, unknown>,
+      )) {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+          throw new Error(
+            `legacy done records: malformed entry for ${JSON.stringify(threadId)}`,
+          );
+        }
+        const record = entry as { doneAt?: unknown; keep?: unknown };
+        if (
+          !(
+            (typeof record.doneAt === "number" &&
+              Number.isFinite(record.doneAt)) ||
+            (typeof record.doneAt === "string" &&
+              !Number.isNaN(Date.parse(record.doneAt)))
+          )
+        ) {
+          throw new Error(
+            `legacy done records: invalid doneAt for ${JSON.stringify(threadId)}: ${JSON.stringify(record.doneAt)}`,
+          );
+        }
+        const imported: DoneRecord =
+          typeof record.doneAt === "number"
+            ? {
+                doneAt: new Date(record.doneAt).toISOString(),
+                ...keepFlag(record.keep),
+              }
+            : // Epoch-free shape already; keep the ISO string as written,
+              // carry keep only when true (DoneRecord's optional keep).
+              { doneAt: record.doneAt, ...keepFlag(record.keep) };
+        await importOne(threadId, imported);
+      }
+    } else {
+      throw new Error(
+        `legacy done store: unexpected shape ${JSON.stringify(legacy)}`,
+      );
+    }
+    await bb.storage.kv.delete(LEGACY_DONE_KEY);
+  }
+
+  async function importOne(threadId: string, record: DoneRecord): Promise<void> {
+    const existing = await readDoneRecord(threadId);
+    if (existing !== null) return; // idempotent: never clobber live state
+    await bb.sdk.threads.updatePluginMetadata({
+      threadId,
+      set: { [DONE_METADATA_KEY]: record },
+    });
+  }
+
+  async function listDoneIds(): Promise<string[]> {
+    await importLegacyDone();
+    const live = await bb.sdk.threads.list({});
+    const doneIds: string[] = [];
+    for (const thread of live) {
+      const record = await readDoneRecord(thread.id);
+      if (record !== null) doneIds.push(thread.id);
+    }
+    return doneIds.sort();
   }
 
   bb.rpc.register(rpcContract, {
-    done_list: async () => ({ doneIds: await readDone() }),
+    done_list: async () => ({ doneIds: await listDoneIds() }),
     done_set: async ({ threadId, done }) => {
-      const current = await readDone();
-      const next = done
-        ? current.includes(threadId)
-          ? current
-          : [...current, threadId]
-        : current.filter((id) => id !== threadId);
-      if (next.length !== current.length) await writeDone(next);
+      // Consume any legacy KV state before the first metadata write, or a
+      // later import could resurrect state this write just changed.
+      await importLegacyDone();
+      await writeDoneRecord(threadId, done);
+      bb.realtime.publish(DONE_CHANGED, { threadId, done });
       return { done };
     },
   });
