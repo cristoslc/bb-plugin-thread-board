@@ -22,9 +22,14 @@ describe("migration shim: legacy KV string[] (main's shape)", () => {
   it("imported ids appear in done_list", async () => {
     const { callRpc, kvSet } = await setup({ threads: ["thr_a", "thr_b"] });
     await kvSet(LEGACY_KV_KEY, ["thr_b", "thr_a"]);
-    expect(await callRpc("done_list", null)).toEqual({
-      doneIds: ["thr_a", "thr_b"],
-    });
+    const listed = (await callRpc("done_list", null)) as {
+      doneIds: string[];
+      records: Record<string, unknown>;
+    };
+    expect(listed.doneIds).toEqual(["thr_a", "thr_b"]);
+    for (const id of ["thr_a", "thr_b"]) {
+      expect(listed.records[id]).toBeTruthy();
+    }
   });
 
   it("does not clobber an existing metadata record (idempotent import)", async () => {
@@ -92,7 +97,7 @@ describe("migration shim: KV lifecycle", () => {
     await kvSet(LEGACY_KV_KEY, ["thr_a"]);
     await callRpc("done_list", null);
     await callRpc("done_set", { threadId: "thr_a", done: false });
-    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [], records: {} });
     expect(doneRecordOf(meta, "thr_a")).toBeUndefined();
   });
 
@@ -111,14 +116,19 @@ describe("migration shim: KV lifecycle", () => {
     await callRpc("done_list", null);
     expect(await kv.get(LEGACY_KV_KEY)).toBeUndefined();
     expect(doneRecordOf(meta, "thr_b")?.doneAt).toBeDefined();
-    expect(await callRpc("done_list", null)).toEqual({
-      doneIds: ["thr_a", "thr_b"],
-    });
+    const listed = (await callRpc("done_list", null)) as {
+      doneIds: string[];
+      records: Record<string, unknown>;
+    };
+    expect(listed.doneIds).toEqual(["thr_a", "thr_b"]);
+    for (const id of ["thr_a", "thr_b"]) {
+      expect(listed.records[id]).toBeTruthy();
+    }
   });
 
   it("no legacy KV → no writes, empty list (shim is a no-op)", async () => {
     const { callRpc, meta } = await setup({ threads: ["thr_fresh"] });
-    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [], records: {} });
     expect(meta.size).toBe(0);
   });
 
@@ -139,9 +149,13 @@ describe("migration shim: ordering", () => {
     });
     const epoch = Date.parse("2026-09-20T00:00:00.000Z");
     await kvSet(LEGACY_KV_KEY, { thr_old: { doneAt: epoch } });
-    expect(await callRpc("done_list", null)).toEqual({
-      doneIds: ["thr_new", "thr_old"],
-    });
+    const listed = (await callRpc("done_list", null)) as {
+      doneIds: string[];
+      records: Record<string, { doneAt?: string }>;
+    };
+    expect(listed.doneIds).toEqual(["thr_new", "thr_old"]);
+    expect(listed.records["thr_new"]).toEqual({ doneAt: "2026-09-25T00:00:00.000Z" });
+    expect(listed.records["thr_old"]).toEqual({ doneAt: "2026-09-20T00:00:00.000Z" });
   });
 
   it("done_set(false) before the next import is not resurrected by it", async () => {
@@ -150,7 +164,7 @@ describe("migration shim: ordering", () => {
     // Clear before any done_list ran: the write must consume the legacy
     // state first, so the shim never re-imports the cleared thread.
     await callRpc("done_set", { threadId: "thr_a", done: false });
-    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [], records: {} });
     expect(doneRecordOf(meta, "thr_a")).toBeUndefined();
   });
 });

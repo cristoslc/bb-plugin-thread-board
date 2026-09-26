@@ -26,6 +26,7 @@ import {
   filterFamilies,
   assembleBoard,
 } from "./components/nesting";
+import { doneAtToEpochMs } from "./lib/done-metadata";
 import {
   DEFAULT_DONE_ARCHIVE_DAYS,
   DEFAULT_IDLE_ARCHIVE_DAYS,
@@ -43,6 +44,25 @@ import { EmptyState } from "./components/empty-state";
 const GROUP_BY_KEY = "thread-board:groupBy";
 const FILTER_KEY = "thread-board:filter";
 const SEARCH_KEY = "thread-board:search";
+
+/** Adapt metadata records ({doneAt: ISO, keep?}) into the sweep's extras
+ *  shape ({doneAt: epoch-ms, keep?}). */
+function recordsAsExtras(
+  records: Record<string, { doneAt?: number | string; keep?: boolean }>,
+): Record<string, { doneAt?: number; keep?: boolean }> {
+  const out: Record<string, { doneAt?: number; keep?: boolean }> = {};
+  for (const [id, record] of Object.entries(records)) {
+    out[id] = {
+      ...(typeof record.doneAt === "string"
+        ? { doneAt: doneAtToEpochMs(record.doneAt) ?? undefined }
+        : record.doneAt !== undefined
+          ? { doneAt: record.doneAt }
+          : {}),
+      ...(record.keep === true ? { keep: true } : {}),
+    };
+  }
+  return out;
+}
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -88,8 +108,9 @@ function BoardPage() {
   const sdk = useSdk();
 
   const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(new Set());
-  // Sweep needs Done ages and the keep flag; the KV store keeps per-thread
-  // records (`doneAt` stamp, `keep` override) returned alongside done ids.
+  // Done ages + sweep overrides come from the per-thread plugin-metadata
+  // records: doneAt is the ISO stamp, keep the sweep override. The epoch
+  // adapter (lib/done-metadata) feeds the sweep's injected `now` contract.
   const [doneExtras, setDoneExtras] = useState<Record<string, { doneAt?: number; keep?: boolean }>>({});
   const [sweepConfig, setSweepConfig] = useState({
     doneArchiveDays: DEFAULT_DONE_ARCHIVE_DAYS,
@@ -99,7 +120,7 @@ function BoardPage() {
     rpc.call("done_list").then(
       (result) => {
         setDoneIds(new Set(result.doneIds));
-        setDoneExtras(result.records);
+        setDoneExtras(recordsAsExtras(result.records));
       },
       () => {}, // Done marking is optional state; the board works without it.
     );
@@ -116,7 +137,7 @@ function BoardPage() {
     rpc.call("done_list").then(
       (result) => {
         setDoneIds(new Set(result.doneIds));
-        setDoneExtras(result.records);
+        setDoneExtras(recordsAsExtras(result.records));
       },
       () => {},
     );
