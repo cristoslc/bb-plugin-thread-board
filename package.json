@@ -19,7 +19,8 @@
       "icon": "Columns2"
     },
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "version": "0.3.0"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.3.4",

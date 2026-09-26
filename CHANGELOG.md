@@ -3,6 +3,26 @@
 All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — 2026-09-25
+
+### Added
+
+- **`bb thread-board` CLI** (#6): one subcommand managing the plugin's own
+  state — a third surface over the same Done/metadata store, never a
+  re-spelling of `bb thread`:
+  - `bb thread-board done list|mark|clear` — list done threads (with
+    `doneAt`, `keep`, and a `not in the live thread list` flag; orphaned
+    marks on deleted threads survive via a `done-index` KV), stamp Done
+    (idempotent, refreshes `doneAt`), clear it. Agents get free Done
+    marking.
+  - `bb thread-board sweep [--ids …] [--confirm]` — dry-run prints the
+    eligible set and exits 1, never archiving without `--confirm`;
+    `--ids` freezes the blast radius to the named threads. `keep`, pinned,
+    and already-archived threads are never eligible.
+  - `bb thread-board config show|set` — read and set the sweep thresholds
+    (`doneArchiveDays`, `idleArchiveDays`) without learning
+    `bb plugin config` syntax.
+
 ## [0.2.0] — 2026-09-25
 
 The day's four sashays plus the nesting refinement round, merged in sequence:
