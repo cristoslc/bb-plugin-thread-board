@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chronicle timeline — bb/sashay-tracker-mirroring-ticket-id-detection-lin-thr_ajjsj7f4fm</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a2e; background: #f7f7fb; }
+  h1 { font-size: 1.3rem; } .meta { color: #666; font-size: .85rem; }
+  .thread { border-left: 3px solid #c5cae9; margin: 1rem 0; padding-left: 1rem; }
+  .comment { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: .75rem 1rem; margin: .75rem 0; }
+  .comment .responding { color: #5c6bc0; font-size: .85rem; font-style: italic; }
+  .commit { background: #eef2ff; border: 1px dashed #9fa8da; border-radius: 6px; padding: .4rem 1rem; margin: .75rem 0; font-family: ui-monospace, monospace; font-size: .85rem; }
+  .commit code { color: #3949ab; }
+  .ts { color: #888; font-size: .78rem; float: right; }
+</style>
+</head>
+<body>
+<h1>Chronicle timeline — tracker mirroring sashay</h1>
+<p class="meta">2026-09-25 · 12 entries · 17 commits</p>
+<div class="thread">
+<div class="comment"><span class="ts">2026-09-25T132741</span><strong>Sashay kickoff: tracker mirroring, step one</strong> <span class="meta">[intent]</span><div class="responding">Responding to: nothing (sashay kickoff)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: intent
+timestamp: 2026-09-25T132741
+responding-to: nothing (sashay kickoff)
+---
+
+## Sashay kickoff: tracker mirroring, step one
+
+**Responding to:** nothing (sashay kickoff)
+
+Per operator request: implement the &quot;Mirror, don&#x27;t integrate&quot; lean from
+docs/musings/2026-09-25-tracker-integration.md — ticket-ID detection on
+cards, link-out on click, then (only if phase one is clean) live GitHub
+status for cards whose title/branch carries a reference. No Linear/Jira,
+no adapter layer.
+
+**Intent for the next work unit:** implement the pure detection module
+`lib/tickets.ts` with its test suite first (TDD), then wire chips into
+the card.
+
+Decisions already settled at plan time (docs/plans/2026-09-25-tracker-mirroring-ticket-id-detection-link-out.md):
+
+- Pattern set: `PROJ-123`, `#1234`, full GitHub URLs; false-positive
+  guards via word boundaries and the uppercase-key rule.
+- The musing&#x27;s proposed vehicle for live status (`bb.sdk.plugins.callRpc`)
+  is empirically unavailable: the official GitHub plugin publishes no RPC
+  methods (`bb plugin rpc list github` → none; `call github sync` → 404).
+  Phase 2 pivots to reading the plugin&#x27;s local SQLite cache server-side,
+  with a graceful-degradation contract and a documented caveat that the
+  cache is an internal surface.
+
+**Commits in this unit:** 94464e5 (plan)</pre></div>
+<div class="comment"><span class="ts">2026-09-25T132943</span><strong>Detection module green: `lib/tickets.ts` + 22 tests</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: nothing (work unit complete: detection module)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T132943
+responding-to: nothing (work unit complete: detection module)
+---
+
+## Detection module green: `lib/tickets.ts` + 22 tests
+
+**Responding to:** nothing (work unit complete: detection module)
+
+TDD cycle complete for the pure detection module:
+
+- Red: all 22 `tests/tickets.test.ts` cases written and failing first
+  (`KEY_REF` lacked its `g` flag for `matchAll`; one expectation error
+  where the test demanded `pull/45` URLs rewrite to `/issues/45` — fixed
+  by preserving the original URL as href instead).
+- Green: 22/22 pass; full suite 45/45; `tsc --noEmit` clean.
+- Pattern set as planned: `PROJ-123` (uppercase key + digits, guarded
+  against dates/versions/mid-word matches), `#N` (word-boundary guarded,
+  `#0` rejected), full GitHub issue/PR URLs (fragment stripped from raw,
+  pull URLs keep their own href).
+- Dedup by raw text across title + branch (`extraText` option).
+
+**Commits in this unit:** (this entry precedes the detection commit)</pre></div>
+<div class="comment"><span class="ts">2026-09-25T133008</span><strong>Intent: card chips + link-out wiring</strong> <span class="meta">[intent]</span><div class="responding">Responding to: nothing (intent post for next work unit)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: intent
+timestamp: 2026-09-25T133008
+responding-to: nothing (intent post for next work unit)
+---
+
+## Intent: card chips + link-out wiring
+
+**Responding to:** nothing (intent post for next work unit)
+
+**What:** render detected refs as small chips on cards (title line + branch
+line scan), stop propagation on chip click, open href in a new tab; inert
+chips when no href. Wire `repoHrefBase` from `sdk.projects.list()`
+(`gitRemoteUrl` → `https://github.com/owner/repo`) in `app.tsx`, passed
+down `Board → ThreadCard` like `projectNameFor`.
+
+**Why:** phase 1&#x27;s user-visible half — detection alone changes nothing on
+screen.
+
+**Success:** cards with `#N`/`PROJ-123` in title or branch show chips;
+clicking a `#N` chip on a GitHub-remote project opens GitHub; no ref → no
+chip, board unchanged; typecheck + suite green.
+
+**Commits in this unit:** none yet
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T133127</span><strong>Card chips + link-out wired; typecheck + suite green</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: intent 2026-09-25T133008 (card chips + link-out wiring)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T133127
+responding-to: intent 2026-09-25T133008 (card chips + link-out wiring)
+---
+
+## Card chips + link-out wired; typecheck + suite green
+
+**Responding to:** intent post for card chips + link-out wiring (same
+work unit, complete).
+
+- `components/thread-card.tsx`: new `TicketChip` (a chip, link variant
+  with `target=&quot;_blank&quot;` and `stopPropagation` — the card itself is an
+  `&lt;a&gt;` to the thread); refs from `findTicketRefs(displayTitle,
+  { extraText: branch, repoHrefBase })` render in a wrap row under the
+  branch line.
+- `components/board.tsx`: new `repoBaseFor` prop threaded to each card.
+- `app.tsx`: one-shot `sdk.projects.list()` on mount builds
+  `projectId → https://github.com/owner/repo` from `gitRemoteUrl`
+  (non-GitHub remotes and fetch failure → no href, chips inert; the
+  sidebar&#x27;s `PluginSidebarProject` carries no remote, hence the extra
+  list call).
+- Green: `tsc --noEmit` clean, 45/45 tests pass.
+
+**Commits in this unit:** (this entry precedes the wiring commit)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T133141</span><strong>Intent: phase 2 — GitHub status from the plugin cache</strong> <span class="meta">[intent]</span><div class="responding">Responding to: nothing (intent post for phase 2)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: intent
+timestamp: 2026-09-25T133141
+responding-to: nothing (intent post for phase 2)
+---
+
+## Intent: phase 2 — GitHub status from the plugin cache
+
+**Responding to:** nothing (intent post for phase 2 work unit)
+
+Phase 1 landed cleanly (detection green, chips wired, typecheck clean), so
+phase 2 proceeds per the plan&#x27;s gate.
+
+**What:** server-side `tracker_status` RPC in `server.ts` that reads the
+GitHub plugin&#x27;s SQLite cache (`~/.bb/plugins/github/data.db`, `items`
+table keyed `(repo, kind, number)` — schema verified live: columns
+repo/kind/number/state/title/updated_at). Frontend batches visible
+numeric refs per repo into one RPC call on board data changes; chips gain
+a state dot. Absent DB, absent rows, or any error → empty/partial map,
+never an error to the board.
+
+**Why:** the musing&#x27;s phase 2 (live status) with the only available
+vehicle — the plugin exposes no RPC (verified empirically), so the cache
+read is the graceful path.
+
+**Success:** a card whose `#N` matches a cache row shows a state dot
+(OPEN emerald / CLOSED muted / MERGED purple); without cache or match,
+chips render as in phase 1; suite + typecheck green; new server tests
+cover hit/miss/no-DB/partial.
+
+**Commits in this unit:** none yet
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T133609</span><strong>Phase 2 complete: server cache read + batched chip status</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: intent 2026-09-25T133141 (phase 2 status)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T133609
+responding-to: intent 2026-09-25T133141 (phase 2 status)
+---
+
+## Phase 2 complete: server cache read + batched chip status
+
+**Responding to:** phase 2 intent post (same work unit, complete).
+
+- `lib/tracker-status.ts` (server-only): `readGitHubStatuses(dbPath, repo,
+  numbers)` — read-only better-sqlite3 query against the GitHub plugin
+  cache; missing file/table/rows → empty map, never a throw. TDD: fixture
+  DB tests plus a live-cache probe test (skips when `~/.bb/plugins/github/data.db`
+  is absent — verified green against the real cache on this machine).
+- `server.ts`: new `tracker_status` RPC (repo + ≤500 numbers → statuses
+  map); resolves the cache at `$HOME/.bb/plugins/github/data.db`.
+- `resolveRepoSlug` moved to `lib/tickets.ts` so the client never imports
+  better-sqlite3 (verified: built `dist/app.js` contains no sqlite/db
+  strings).
+- `app.tsx`: batched status fetch — visible numeric refs grouped per repo
+  into one `tracker_status` call per repo per ref-snapshot change, no
+  interval, no per-card calls (answers the musing&#x27;s polling-cost question
+  empirically).
+- `components/thread-card.tsx`: chips gain a state dot for known refs
+  (OPEN emerald / MERGED purple / CLOSED muted / unknown gray).
+- Green: 53/53 tests, `tsc --noEmit` clean, `bb plugin build` succeeds.
+
+**Commits in this unit:** (this entry precedes the phase-2 commit)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T133714</span><strong>Closure: rebased, green, coverage matrix extended</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: sashay closure loop entry (rebase + tests + coverage matrix)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T133714
+responding-to: sashay closure loop entry (rebase + tests + coverage matrix)
+---
+
+## Closure: rebased, green, coverage matrix extended
+
+**Responding to:** subagent done; closure loop started.
+
+- Rebased onto origin/main (8 commits replayed cleanly), force-pushed
+  with lease.
+- Full suite: 53/53 pass (`npm test`), `tsc --noEmit` clean, `bb plugin
+  build` succeeds.
+- Pre-test inventory: the repo&#x27;s master coverage matrix
+  (docs/test-coverage-matrix.md) predated this sashay; extended it with
+  the three new workflow paths (detection, link-out, status cache read)
+  with auto-coverage cells filled per class.
+
+**Commits in this unit:** (coverage-matrix commit)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T134709</span><strong>Code review findings: 3 high, 6 medium — fix round incoming</strong> <span class="meta">[review]</span><div class="responding">Responding to: PR-level code review (six-lens, needs_changes)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: review-response
+timestamp: 2026-09-25T134709
+responding-to: PR-level code review (six-lens, needs_changes)
+---
+
+## Code review findings: 3 high, 6 medium — fix round incoming
+
+**Responding to:** PR-level code review (security/style/logic/docs/memory/
+project-memory-conformance, six specialist subagents). Report:
+docs/ai-code-reviews/code-review-2026-09-25T134707.md
+
+Security passed clean. Actionable findings, deduped:
+
+1. **HIGH — .git hrefs 404:** app.tsx re-implements GitHub remote parsing
+   with a greedy regex; .git-suffixed remotes yield `owner/repo.git` bases
+   and GitHub-404ing chip hrefs (reviewer verified live). The status-dot
+   path strips .git via resolveRepoSlug, so dots work while links die.
+   Fix: use resolveRepoSlug + rebuild base from slug; add a .git test.
+2. **HIGH — better-sqlite3 is a devDependency** while imported by shipped
+   server runtime. Fix: move to dependencies.
+3. **MEDIUM batch:** 500-cap silent drop (slice client-side), one-shot
+   projects fetch never retried (re-run on projects prop change), bare
+   catch hides bugs (log unexpected errors), unused `repo` prop on
+   TicketChip, missing trailing newlines, two inaccurate KEY_REF comments.
+
+Lows will ride along where free (type-only imports, lookbehind HASH_REF,
+prune ticketStatuses per snapshot, plan/README notes).
+
+**Commits in this unit:** 9e2e565 (review report)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T134932</span><strong>Review fixes applied: all highs and mediums</strong> <span class="meta">[review]</span><div class="responding">Responding to: review findings 2026-09-25T134709 (3 high, 6 medium)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: review-response
+timestamp: 2026-09-25T134932
+responding-to: review findings 2026-09-25T134709 (3 high, 6 medium)
+---
+
+## Review fixes applied: all highs and mediums
+
+**Responding to:** code-review findings (3 high, 6 medium).
+
+- HIGH .git hrefs: app.tsx now derives repo bases via `resolveRepoSlug`
+  (single parser; https and ssh both handled). Regression test pins the
+  .git round-trip.
+- HIGH deps: `better-sqlite3` moved to dependencies; fresh `npm ci` +
+  build verified.
+- MEDIUM 500-cap: client slices per-repo batches to 500 — overflow now
+  degrades to partial dots instead of a rejected call.
+- MEDIUM one-shot fetch: the repo-base effect re-runs when the sidebar
+  project list changes.
+- MEDIUM bare catch: non-SQLite errors now log a warning (bb.log injected
+  into readGitHubStatuses); SQLite-native errors stay silent (documented
+  degrade paths).
+- MEDIUM cleanup: unused `repo` prop dropped from TicketChip; trailing
+  newlines added to the four new files; KEY_REF comments corrected
+  (lookbehind claim + lookahead job); 500-cap documented;
+  GitHubItemStatus documented; $HOME join noted; visibleRefKey
+  round-trip commented.
+- Bonus low fixes: HASH_REF lookbehind (adjacent `#12#13` both match;
+  letters still rejected, new test), per-snapshot status-map replace
+  (no stale dots, no unbounded growth), visibleRefKey comment.
+- Deferred (recorded): plan-contract note + README bullets land in the
+  final documentation commit.
+
+Green: 55/55 tests, tsc clean, plugin build succeeds.
+
+**Commits in this unit:** (this commit)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T134953</span><strong>Pre-handoff verification: rebase + full test battery green</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: sashay closure loop (pre-handoff verification)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T134953
+responding-to: sashay closure loop (pre-handoff verification)
+---
+
+## Pre-handoff verification: rebase + full test battery green
+
+**Responding to:** closure loop, pre-handoff step.
+
+- Rebased onto latest origin/main; branch pushed.
+- Full suite 55/55 (`npm test`), `tsc --noEmit` clean, `npm run build`
+  (bb plugin build) succeeds.
+- No staging deploy exists for this project (embedded bb plugin panel;
+  no staging scripts in scripts/), so staging E2E and teardown are N/A.
+  No operator-assisted E2E suite exists (tests/manual/ absent).
+- Remaining before hand-to-operator: plan contract note + README bullets,
+  then final review round.
+
+**Commits in this unit:** none yet (documentation-only commit follows)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T135013</span><strong>Documentation closure: README + plan-contract note</strong> <span class="meta">[checkpoint]</span><div class="responding">Responding to: review lows deferred at 2026-09-25T134932</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: checkpoint
+timestamp: 2026-09-25T135013
+responding-to: review lows deferred at 2026-09-25T134932
+---
+
+## Documentation closure: README + plan-contract note
+
+**Responding to:** deferred low findings from the review round.
+
+- README &quot;What it does&quot;: two new bullets — ticket chips (detection,
+  link-out, inert without a GitHub remote) and optional GitHub status dots
+  (disclosing the read-only cache read and its degrade-to-empty behavior).
+- Plan end-of-sashay note now records the shipped `tracker_status`
+  contract (`{ repo, numbers }` → `{ kind, state }`), closing the
+  plan-conformance low.
+
+**Commits in this unit:** (README/plan commit)
+</pre></div>
+<div class="comment"><span class="ts">2026-09-25T135013</span><strong>Fix round verified clean: 11/11 addressed, no blocking findings</strong> <span class="meta">[review]</span><div class="responding">Responding to: fix-round verification review (all 11 findings)</div><pre style="white-space:pre-wrap;font-size:.85rem">---
+type: review-response
+timestamp: 2026-09-25T135013
+responding-to: fix-round verification review (all 11 findings)
+---
+
+## Fix round verified clean: 11/11 addressed, no blocking findings
+
+**Responding to:** the fix round; verification re-review complete.
+
+An independent re-review checked each of the 11 findings against the
+current code: all FIXED (evidence cited per item), suite 55/55 and
+`tsc --noEmit` pass, and no new blocking findings. Two cosmetic lows noted
+(hand-rolled logger structural type; visibleRefKey self-describing
+encoding) — recorded here for the retro, not blocking.
+
+The PR is ready for the operator: removing the WIP prefix.
+
+**Commits in this unit:** none (verification only)
+</pre></div>
+<div class="commit"><code>b8aced244</code> Plan: tracker mirroring — ticket-ID detection, link-out, GitHub status via cache <span class="ts">2026-09-25 13:27</span></div>
+<div class="commit"><code>f13e345d5</code> Chronicle: sashay kickoff intent <span class="ts">2026-09-25 13:27</span></div>
+<div class="commit"><code>55e56a4ef</code> Add pure ticket-ref detection (PROJ-123, #N, GitHub URLs) with guards <span class="ts">2026-09-25 13:30</span></div>
+<div class="commit"><code>6c8089159</code> Chronicle: intent for card chips + link-out <span class="ts">2026-09-25 13:30</span></div>
+<div class="commit"><code>30e15ddc7</code> Render ticket chips on cards with GitHub link-out <span class="ts">2026-09-25 13:31</span></div>
+<div class="commit"><code>e01fcb26b</code> Chronicle: intent for phase 2 status <span class="ts">2026-09-25 13:31</span></div>
+<div class="commit"><code>dc90ce9e1</code> Live GitHub status on ticket chips via the GitHub plugin cache (server RPC) <span class="ts">2026-09-25 13:36</span></div>
+<div class="commit"><code>9bd53e74d</code> Plan: record end-of-sashay status (cache read replaced callRpc) <span class="ts">2026-09-25 13:36</span></div>
+<div class="commit"><code>62f4a7772</code> Coverage matrix: ticket detection, link-out, GitHub status rows <span class="ts">2026-09-25 13:37</span></div>
+<div class="commit"><code>99e7dc5c3</code> Chronicle: closure checkpoint (rebase, tests, matrix) <span class="ts">2026-09-25 13:37</span></div>
+<div class="commit"><code>b8681728b</code> Code review report: needs_changes (3 high, 6 medium) <span class="ts">2026-09-25 13:47</span></div>
+<div class="commit"><code>e16ef8629</code> Review fixes: .git remotes via resolveRepoSlug, sqlite to dependencies, batch slice, per-snapshot status map, regex lookbehind <span class="ts">2026-09-25 13:49</span></div>
+<div class="commit"><code>6d49402c9</code> Chronicle: review fixes applied <span class="ts">2026-09-25 13:49</span></div>
+<div class="commit"><code>a5fa17ee2</code> Chronicle: pre-handoff verification <span class="ts">2026-09-25 13:49</span></div>
+<div class="commit"><code>1a6045a21</code> README: ticket chips + status dots; plan: record shipped RPC contract <span class="ts">2026-09-25 13:50</span></div>
+<div class="commit"><code>bf9ea1fc2</code> Chronicle: documentation closure <span class="ts">2026-09-25 13:50</span></div>
+<div class="commit"><code>b74c058ea</code> Chronicle: fix round verified, ready for operator <span class="ts">2026-09-25 13:52</span></div>
+</div>
+</body>
+</html>

@@ -10,6 +10,7 @@ import {
   useSdk,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { findTicketRefs, resolveRepoSlug } from "./lib/tickets";
 import type { rpcContract } from "./server";
 import { Board } from "./components/board";
 import { BoardToolbar } from "./components/board-toolbar";
@@ -212,6 +213,35 @@ function BoardPage() {
     // back to the default below.
     readStored(GROUP_BY_KEY, ["none", "status", "recency", "project", "provider", "machine"], "status"),
   );
+  // GitHub repo base per project, for ticket-chip link-outs. Best-effort:
+  // a failed or non-GitHub lookup just means chips render without links.
+  // Re-runs when the sidebar project list changes (new project, or a
+  // late-arriving remote) so the map is never a stale one-shot snapshot.
+  const [repoBaseByProject, setRepoBaseByProject] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    sdk.projects
+      .list()
+      .then(
+        (projectList) => {
+          if (cancelled) return;
+          const next: Record<string, string> = {};
+          for (const project of projectList) {
+            const slug = resolveRepoSlug(project.gitRemoteUrl);
+            if (slug !== null) next[project.id] = `https://github.com/${slug}`;
+          }
+          setRepoBaseByProject(next);
+        },
+        () => {}, // Link-out is optional; the board works without it.
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk, projects]);
+  const repoBaseFor = useCallback(
+    (projectId: string): string | null => repoBaseByProject[projectId] ?? null,
+    [repoBaseByProject],
+  );
   const [filter, setFilter] = useState<FilterState>(() => ({
     projects: new Set(readStoredList(`${FILTER_KEY}:projects`)),
     providers: new Set(readStoredList(`${FILTER_KEY}:providers`)),
@@ -348,6 +378,87 @@ function BoardPage() {
       for (const threadId of confirmSweep(current, true)) actions.archive(threadId);
     },
     [actions, armedSweep],
+  );
+
+  // Live GitHub status for ticket chips. Batched: one RPC per visible-ref
+  // snapshot (numeric refs grouped per repo), re-fetched when the thread
+  // list changes — no interval, no per-card calls. Failures degrade to
+  // "no status known"; the board never breaks on this path.
+  const [ticketStatuses, setTicketStatuses] = useState<Record<string, Record<number, { kind: string; state: string }>>>({});
+  // visibleRefKey is a sorted, comma-joined snapshot ("owner/repo#42,...").
+  // Safe to join: repo slugs cannot contain commas or hashes. It doubles as
+  // the effect dependency (cheap string equality) and is re-parsed below.
+  const visibleRefKey = useMemo(
+    () =>
+      visibleThreads
+        .flatMap((thread) => {
+          const repoBase = repoBaseByProject[thread.projectId];
+          const repo = repoBase === undefined ? null : resolveRepoSlug(repoBase);
+          if (repo === null) return [];
+          const branch = thread.environment?.branchName ?? thread.host?.name ?? "";
+          return findTicketRefs(thread.displayTitle, { extraText: branch })
+            .filter((ref) => ref.number !== undefined)
+            .map((ref) => `${repo}#${ref.number}`);
+        })
+        .sort()
+        .join(","),
+    [visibleThreads, repoBaseByProject],
+  );
+  useEffect(() => {
+    if (visibleRefKey === "") {
+      setTicketStatuses({});
+      return;
+    }
+    let cancelled = false;
+    const wanted = new Map<string, Set<number>>();
+    for (const entry of visibleRefKey.split(",")) {
+      const at = entry.lastIndexOf("#");
+      const repo = entry.slice(0, at);
+      const num = Number(entry.slice(at + 1));
+      const set = wanted.get(repo) ?? new Set<number>();
+      set.add(num);
+      wanted.set(repo, set);
+    }
+    // Replace the whole map per snapshot (not merge) so statuses mirror the
+    // visible ref set exactly — no stale dots, no session-long growth.
+    const next: Record<string, Record<number, { kind: string; state: string }>> = {};
+    let pending = wanted.size;
+    const settle = () => {
+      if (!cancelled && pending === 0) setTicketStatuses(next);
+    };
+    for (const [repo, numbers] of wanted) {
+      // The RPC caps input at 500 numbers; slice so an overflowing repo
+      // degrades to partial dots instead of a rejected call (no dots at all).
+      const batch = [...numbers].slice(0, 500);
+      rpc
+        .call("tracker_status", { repo, numbers: batch })
+        .then(
+          (result) => {
+            if (!cancelled) {
+              next[repo] = result.statuses;
+              pending -= 1;
+              settle();
+            }
+          },
+          () => {
+            // Status is optional decoration; chips render without it.
+            if (!cancelled) {
+              pending -= 1;
+              settle();
+            }
+          },
+        );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleRefKey, rpc]);
+  const statusFor = useCallback(
+    (repo: string | null, number: number | undefined) => {
+      if (repo === null || number === undefined) return undefined;
+      return ticketStatuses[repo]?.[number];
+    },
+    [ticketStatuses],
   );
 
   const anyFilterActive =
@@ -492,6 +603,8 @@ function BoardPage() {
             projectNameFor={(projectId) =>
               projects.find((project) => project.id === projectId)?.name ?? "Personal"
             }
+            repoBaseFor={repoBaseFor}
+            statusFor={statusFor}
             onOpenThread={openThreadCard}
             onNewTask={() => actions.openNewThread({ focusPrompt: true })}
             sweepCandidatesFor={sweepCandidatesFor}
