@@ -11,14 +11,25 @@
 // Plugin metadata writes emit no thread realtime event, so the explicit
 // done-changed publish stays.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   DONE_METADATA_KEY,
+  doneAtToEpochMs,
   parseDoneRecord,
   stampDone,
   type DoneRecord,
 } from "./lib/done-metadata";
 import { DEFAULT_DONE_ARCHIVE_DAYS, DEFAULT_IDLE_ARCHIVE_DAYS } from "./lib/sweep";
+import {
+  sweepCliEligible,
+  type SweepEligible,
+  type SweepFact,
+} from "./lib/sweep-cli";
 import { readGitHubStatuses } from "./lib/tracker-status";
 import { resolveRepoSlug } from "./lib/tickets";
 import type { JsonValue } from "@get-bb/plugin-sdk";
@@ -72,6 +83,16 @@ const DONE_CHANGED = "done-changed";
 const LEGACY_DONE_KEY = "done-thread-ids";
 /** Per-thread sweep keep flags, independent of Done marks. */
 const KEEP_KEY = "sweep-keep-flags";
+/**
+ * Best-effort index of thread ids the board believes carry its `done`
+ * metadata. The SDK has no metadata scan, so `bb thread-board done list`
+ * and `sweep` use it to report marks on threads that have dropped out of
+ * both the live and archived thread lists (deleted since their mark).
+ * Metadata stays the source of truth; the index only widens reporting of
+ * orphaned marks. Updated on every done write (board RPC, CLI, legacy
+ * import).
+ */
+const DONE_INDEX_KV_KEY = "done-index";
 
 // time ("mirror, don't integrate": read-only, degrade-to-empty access —
 // see lib/tracker-status.ts).
@@ -133,6 +154,28 @@ export default async function plugin(bb: BbPluginApi) {
     return parseDoneRecord(value);
   }
 
+  async function readDoneIndex(): Promise<string[]> {
+    const ids: unknown = await bb.storage.kv.get(DONE_INDEX_KV_KEY);
+    if (!Array.isArray(ids)) return [];
+    return ids.filter((id): id is string => typeof id === "string");
+  }
+
+  async function addToDoneIndex(threadId: string): Promise<void> {
+    const ids = new Set(await readDoneIndex());
+    if (ids.has(threadId)) return;
+    ids.add(threadId);
+    await bb.storage.kv.set(DONE_INDEX_KV_KEY, [...ids]);
+  }
+
+  async function removeFromDoneIndex(threadId: string): Promise<void> {
+    const ids = await readDoneIndex();
+    if (!ids.includes(threadId)) return;
+    await bb.storage.kv.set(
+      DONE_INDEX_KV_KEY,
+      ids.filter((id) => id !== threadId),
+    );
+  }
+
   async function writeDoneRecord(threadId: string, done: boolean) {
     const now = new Date();
     if (done) {
@@ -142,11 +185,13 @@ export default async function plugin(bb: BbPluginApi) {
         threadId,
         set: { [DONE_METADATA_KEY]: record },
       });
+      await addToDoneIndex(threadId);
     } else {
       await bb.sdk.threads.updatePluginMetadata({
         threadId,
         remove: [DONE_METADATA_KEY],
       });
+      await removeFromDoneIndex(threadId);
     }
   }
 
@@ -219,11 +264,16 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function importOne(threadId: string, record: DoneRecord): Promise<void> {
     const existing = await readDoneRecord(threadId);
-    if (existing !== null) return; // idempotent: never clobber live state
+    if (existing !== null) {
+      // Idempotent: never clobber live state; make sure the index knows.
+      await addToDoneIndex(threadId);
+      return;
+    }
     await bb.sdk.threads.updatePluginMetadata({
       threadId,
       set: { [DONE_METADATA_KEY]: record },
     });
+    await addToDoneIndex(threadId);
   }
 
   async function listDoneRecords(): Promise<{
@@ -317,6 +367,373 @@ export default async function plugin(bb: BbPluginApi) {
       return { threadId, keep };
     },
   });
+
+  // --- CLI: bb thread-board ---
+  //
+  // Manages plugin-owned state only (the standing rule from the CLI
+  // musing): done list/mark/clear over the board's own metadata, the
+  // sweep over the board's own eligibility rules and settings, and the
+  // threshold config. It never re-spells `bb thread` commands.
+
+  const settingsKeys = ["doneArchiveDays", "idleArchiveDays"] as const;
+  const settingsCaps: Record<(typeof settingsKeys)[number], number> = {
+    doneArchiveDays: 365,
+    idleArchiveDays: 3650,
+  };
+
+  /** The SDK's thread row shape, as returned by `threads.list`. */
+  type ThreadRow = Awaited<ReturnType<typeof bb.sdk.threads.list>>[number];
+
+  /**
+   * Every thread the board can currently see: the live list plus the
+   * archived list. Ids from the board's own done index whose threads are
+   * gone from both (deleted) round out the candidate set so `done list`
+   * still reports their surviving marks.
+   */
+  async function listCandidateThreads(): Promise<{
+    rows: ThreadRow[];
+    liveIds: Set<string>;
+  }> {
+    const [live, archivedRows] = await Promise.all([
+      bb.sdk.threads.list({}),
+      bb.sdk.threads.list({ archived: true, limit: 200 }),
+    ]);
+    const byId = new Map<string, ThreadRow>();
+    for (const thread of [...live, ...archivedRows]) byId.set(thread.id, thread);
+    const liveIds = new Set(live.map((thread) => thread.id));
+    return { rows: [...byId.values()], liveIds };
+  }
+
+  /** Index ids whose Done marks the live/archived lists cannot show. */
+  async function listIndexOnlyIds(): Promise<string[]> {
+    const [candidates, indexIds] = await Promise.all([
+      listCandidateThreads(),
+      readDoneIndex(),
+    ]);
+    const known = new Set(candidates.rows.map((row) => row.id));
+    return indexIds.filter((id) => !known.has(id));
+  }
+
+  const doneList = cliCommand({
+    summary: "List threads marked Done in the board's own metadata",
+    options: {
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(_input) {
+      await importLegacyDone();
+      const { rows: candidates, liveIds } = await listCandidateThreads();
+      const kept = await readKept();
+      const seen = new Set<string>();
+      const records: Array<{
+        id: string;
+        title: string | null;
+        doneAt: string;
+        keep: boolean;
+        inLiveList: boolean;
+      }> = [];
+      // Live + archived threads first, then the board's index-only ids
+      // (threads deleted since their mark): the index is the only way to
+      // see those, because the SDK has no metadata scan.
+      for (const thread of candidates) {
+        seen.add(thread.id);
+        const record = await readDoneRecord(thread.id);
+        if (record === null) continue;
+        records.push({
+          id: thread.id,
+          title: thread.title ?? thread.titleFallback,
+          doneAt: record.doneAt,
+          keep: record.keep === true || kept[thread.id] === true,
+          inLiveList: liveIds.has(thread.id),
+        });
+      }
+      for (const threadId of await listIndexOnlyIds()) {
+        if (seen.has(threadId)) continue;
+        seen.add(threadId);
+        const record = await readDoneRecord(threadId);
+        if (record === null) continue;
+        records.push({
+          id: threadId,
+          title: null,
+          doneAt: record.doneAt,
+          keep: record.keep === true || kept[threadId] === true,
+          inLiveList: false,
+        });
+      }
+      const stdout = _input.options.json
+        ? JSON.stringify(records, null, 2) + "\n"
+        : records.length === 0
+          ? "No threads are marked Done.\n"
+          : records
+              .map((row) => {
+                const flags = [
+                  row.keep ? "keep" : null,
+                  row.inLiveList ? null : "not in the live thread list",
+                ]
+                  .filter((flag) => flag !== null)
+                  .join(", ");
+                const suffix = flags.length > 0 ? ` (${flags})` : "";
+                return `${row.id}\t${row.doneAt}\t${row.title ?? "(untitled)"}${suffix}`;
+              })
+              .join("\n") + "\n";
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  const doneMark = cliCommand({
+    summary: "Mark threads Done (stamps doneAt, idempotent)",
+    positionals: [
+      {
+        name: "thread-id",
+        description: "Thread id(s) to mark Done",
+        required: true,
+        variadic: true,
+      },
+    ],
+    options: {
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(input) {
+      await importLegacyDone();
+      const marked: string[] = [];
+      for (const threadId of input.positionals["thread-id"]) {
+        await writeDoneRecord(threadId, true);
+        bb.realtime.publish(DONE_CHANGED, { threadId, done: true });
+        marked.push(threadId);
+      }
+      const stdout = input.options.json
+        ? JSON.stringify({ marked }, null, 2) + "\n"
+        : marked.map((id) => `marked ${id}`).join("\n") + "\n";
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  const doneClear = cliCommand({
+    summary: "Clear the Done mark from threads (idempotent)",
+    description:
+      "Clearing the Done mark does not touch the sweep keep flag; a kept thread stays kept until 'Allow sweep' clears it.",
+    positionals: [
+      {
+        name: "thread-id",
+        description: "Thread id(s) to clear",
+        required: true,
+        variadic: true,
+      },
+    ],
+    options: {
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(input) {
+      await importLegacyDone();
+      const cleared: string[] = [];
+      for (const threadId of input.positionals["thread-id"]) {
+        await writeDoneRecord(threadId, false);
+        bb.realtime.publish(DONE_CHANGED, { threadId, done: false });
+        cleared.push(threadId);
+      }
+      const stdout = input.options.json
+        ? JSON.stringify({ cleared }, null, 2) + "\n"
+        : cleared.map((id) => `cleared ${id}`).join("\n") + "\n";
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  const sweep = cliCommand({
+    summary:
+      "Show (or with --confirm, archive) Done-past-threshold and long-idle threads",
+    description:
+      "Without --confirm this is a dry-run: it prints the eligible set and exits 1 without archiving anything.",
+    options: {
+      confirm: {
+        type: "boolean",
+        description: "Actually archive the resolved eligible set",
+      },
+      ids: {
+        type: "string",
+        repeatable: true,
+        split: ",",
+        description:
+          "Restrict the sweep to these thread ids (frozen-list semantics)",
+      },
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(input) {
+      await importLegacyDone();
+      const confirm = input.options.confirm === true;
+      const ids = input.options.ids ?? [];
+      const thresholds = await settings.get();
+      const { rows: candidates } = await listCandidateThreads();
+      const byId = new Map(candidates.map((row) => [row.id, row]));
+      const kept = await readKept();
+
+      const facts: SweepFact[] = await Promise.all(
+        candidates.map(async (thread) => {
+          const record = await readDoneRecord(thread.id);
+          return {
+            id: thread.id,
+            archived: thread.archivedAt !== null,
+            pinned: thread.pinnedAt !== null,
+            updatedAt: thread.updatedAt,
+            doneAt:
+              record === null
+                ? null
+                : doneAtToEpochMs(record.doneAt),
+            keep: record?.keep === true || kept[thread.id] === true,
+          };
+        }),
+      );
+      let eligible = sweepCliEligible(facts, thresholds, Date.now());
+      if (ids.length > 0) {
+        const idSet = new Set(ids);
+        if (confirm) {
+          // Frozen-list semantics: archive exactly the named ids that are
+          // still live, even if they are not otherwise eligible, and never
+          // archive anything else.
+          eligible = facts
+            .filter((fact) => idSet.has(fact.id) && !fact.archived)
+            .map((fact) => ({
+              id: fact.id,
+              reason: fact.doneAt !== null ? ("done" as const) : ("idle" as const),
+            }));
+        } else {
+          eligible = eligible.filter((entry) => idSet.has(entry.id));
+        }
+      }
+
+      const describe = (entry: SweepEligible): string =>
+        entry.reason === "done"
+          ? `done longer than ${thresholds.doneArchiveDays}d`
+          : `idle longer than ${thresholds.idleArchiveDays}d`;
+      const titleOf = (id: string): string | null => {
+        const thread = byId.get(id);
+        return thread?.title ?? thread?.titleFallback ?? null;
+      };
+
+      if (!confirm) {
+        const lines = eligible.map(
+          (entry) =>
+            `${entry.id}\t${describe(entry)}\t${titleOf(entry.id) ?? "(untitled)"}`,
+        );
+        const stdout = input.options.json
+          ? JSON.stringify(
+              {
+                eligible: eligible.map((entry) => ({
+                  id: entry.id,
+                  reason: entry.reason,
+                  title: titleOf(entry.id),
+                })),
+                count: eligible.length,
+              },
+              null,
+              2,
+            ) + "\n"
+          : eligible.length === 0
+            ? "No threads are sweep-eligible.\n"
+            : `${lines.join("\n")}\n${eligible.length} thread(s) eligible; re-run with --confirm to archive.\n`;
+        return { exitCode: 1, stdout };
+      }
+
+      const results: Array<{ id: string; archived: boolean }> = [];
+      for (const entry of eligible) {
+        await bb.sdk.threads.archive({ threadId: entry.id });
+        results.push({ id: entry.id, archived: true });
+      }
+      const stdout = input.options.json
+        ? JSON.stringify({ archived: results, count: results.length }, null, 2) + "\n"
+        : results.length === 0
+          ? "Nothing to archive.\n"
+          : results.map((result) => `archived ${result.id}`).join("\n") + "\n";
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  const configShow = cliCommand({
+    summary: "Show the sweep threshold settings and their defaults",
+    options: {
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(input) {
+      const values = await settings.get();
+      const defaults = {
+        doneArchiveDays: DEFAULT_DONE_ARCHIVE_DAYS,
+        idleArchiveDays: DEFAULT_IDLE_ARCHIVE_DAYS,
+      };
+      const rows = (Object.keys(defaults) as Array<keyof typeof defaults>).map(
+        (key) => ({
+          key,
+          value: values[key],
+          default: defaults[key],
+          overridden: values[key] !== defaults[key],
+        }),
+      );
+      const stdout = input.options.json
+        ? JSON.stringify(rows, null, 2) + "\n"
+        : rows
+            .map(
+              (row) =>
+                `${row.key}=${row.value} (default ${row.default}${row.overridden ? ", overridden" : ""})`,
+            )
+            .join("\n") + "\n";
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  const configSet = cliCommand({
+    summary: `Set a sweep threshold setting (${settingsKeys.join(" | ")})`,
+    positionals: [
+      {
+        name: "key",
+        description: `doneArchiveDays or idleArchiveDays`,
+        required: true,
+      },
+      { name: "value", description: "Positive integer (days)", required: true },
+    ],
+    options: {
+      json: { type: "boolean", description: "Emit machine-readable JSON" },
+    },
+    async run(input) {
+      const key = input.positionals.key;
+      if (!(settingsKeys as readonly string[]).includes(key)) {
+        throw new PluginCliError(`unknown setting '${key}'`, {
+          code: "invalid_value",
+          hint: `Valid keys: ${settingsKeys.join(", ")}`,
+        });
+      }
+      const raw = input.positionals.value;
+      const value = Number(raw);
+      const cap = settingsCaps[key as (typeof settingsKeys)[number]];
+      if (!Number.isInteger(value) || value < 1 || value > cap) {
+        throw new PluginCliError(`invalid value '${raw}' for ${key}`, {
+          code: "invalid_value",
+          hint: `Expected an integer between 1 and ${cap} (days).`,
+        });
+      }
+      const next = await settings.experimental_set({
+        [key]: value,
+      });
+      const effective = next[key as (typeof settingsKeys)[number]];
+      const stdout = input.options.json
+        ? JSON.stringify({ key, value: effective }, null, 2) + "\n"
+        : `${key}=${effective}\n`;
+      return { exitCode: 0, stdout };
+    },
+  });
+
+  bb.cli.register(
+    defineCli({
+      name: "thread-board",
+      summary: "Manage the Thread Board plugin's own state",
+      description:
+        "Done list/mark/clear, sweep (archive old Done + long-idle, dry-run by default), and the sweep thresholds.",
+      commands: {
+        "done list": doneList,
+        "done mark": doneMark,
+        "done clear": doneClear,
+        sweep,
+        "config show": configShow,
+        "config set": configSet,
+      },
+    }),
+  );
 
   bb.onDispose(() => {
     bb.log.info("disposed");

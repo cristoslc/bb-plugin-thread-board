@@ -65,6 +65,34 @@ Done marks the sweep reads — never thread content. Hidden threads are
 excluded; archived threads render only as rows nested under their live
 parent (or not at all when nesting is off).
 
+## CLI
+
+The plugin registers one `bb` subcommand, `bb thread-board`, for managing
+its own state (not a re-spelling of `bb thread`):
+
+```sh
+bb thread-board done list [--json]
+bb thread-board done mark <thread-id>... [--json]   # stamps doneAt; idempotent
+bb thread-board done clear <thread-id>... [--json]
+bb thread-board sweep [--ids <id>...] [--json]      # dry-run: prints the eligible set, exits 1
+bb thread-board sweep --confirm [--ids <id>...] [--json]
+bb thread-board config show [--json]
+bb thread-board config set <doneArchiveDays|idleArchiveDays> <days> [--json]
+```
+
+Agents can list and mark Done state, preview the sweep, and edit the
+thresholds. **The sweep never archives without `--confirm`:** the plain
+invocation is a dry-run that prints what would be archived (id, why it
+qualifies) and exits 1, so a scripted caller reading only the exit code
+cannot mistake "here is what I would archive" for success. `--ids` freezes
+the blast radius to the named threads — with `--confirm`, only those ids
+are archived even if more threads have become eligible in the meantime.
+Done threads older than `doneArchiveDays` (default 7) and long-idle threads
+past `idleArchiveDays` (default 30) are eligible; `keep` threads (from the
+card menu or `sweep_keep_set`), pinned threads, and already-archived
+threads never are. The same thresholds render in Settings → Installed
+plugins.
+
 ## Screenshots
 
 <p align="center">

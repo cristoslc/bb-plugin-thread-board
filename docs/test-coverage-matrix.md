@@ -32,6 +32,13 @@ happy-path coverage suffices except where a cell is filled anyway.
 | Ticket-ref detection (`findTicketRefs`: `PROJ-123`, `#N`, GitHub URLs) | low | auto (`tests/tickets.test.ts`) | auto (lowercase keys, `#0`, non-GitHub URLs rejected) | auto (dates/versions/mid-word guards, dedup across title+branch) | skip (pure ordering) |
 | Ticket-chip link-out (repo base from `gitRemoteUrl`, href or inert chip) | low | auto (`tests/tickets.test.ts` href resolution) | auto (no base → no href) | auto (pull URL keeps its own href) | skip |
 | GitHub status cache read (`readGitHubStatuses`, `tracker_status` RPC) | low (read-only external cache) | auto (`tests/tracker-status.test.ts` hit + live-cache probe) | auto (missing DB/table → empty map, no throw) | auto (partial match, empty ref list) | skip |
+| `bb thread-board done list` | low | auto (`tests/cli.test.ts`: --json row shape, empty state) | auto (keep flag merged from metadata + KV store; not-in-live-list and index-only deleted-thread rows) | auto (legacy-migrated rows render their import stamp) | manual (live-host smoke) |
+| `bb thread-board done mark` | medium (writes state) | auto (`tests/cli.test.ts`: stamps doneAt, multi-id, --json) | auto (no ids → missing-required parser error) | auto (re-mark refreshes doneAt, keep preserved; done-changed published with main's payload shape) | manual (live-host smoke) |
+| `bb thread-board done clear` | medium | auto (`tests/cli.test.ts`) | auto (no ids → missing-required) | auto (idempotent on non-done; KV keep flag untouched — clear ≠ allow-sweep) | manual |
+| `bb thread-board sweep` (dry-run) | low | auto (`tests/sweep-cli.test.ts`: prints eligible set, exits 1) | auto (no eligible threads; archive stub untouched) | auto (boundary at exactly N days; done-below-threshold not claimed as idle) | manual (live-host smoke) |
+| `bb thread-board sweep --confirm` | **high** (archives threads) | auto (`tests/sweep-cli.test.ts`: archives exactly the resolved set) | auto (nothing eligible → zero archive calls) | auto (keep honored from both stores; pinned and already-archived skipped) | manual (live-host smoke) |
+| `bb thread-board sweep --ids --confirm` (frozen list) | **high** | auto (archives exactly the named ids even when others also qualify) | auto (skips already-archived named ids) | auto (--ids narrows the dry-run print) | manual |
+| `bb thread-board config show/set` | low | auto (`tests/cli.test.ts`) | auto (unknown key names valid keys; 0/negative/non-integer/over-cap rejected, store untouched) | auto (overridden flag; config-set threshold honored by the next sweep) | manual |
 
 Auto = vitest (`npm test`). Manual = operator-assisted check during the
 sashay's hand-to-operator step; no automated E2E exists for the embedded
