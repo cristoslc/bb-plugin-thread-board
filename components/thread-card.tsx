@@ -38,6 +38,8 @@ interface ThreadCardProps {
   isDone: boolean;
   /** Done ids; a done nested child (or a done parent's family) renders dimmed. */
   doneIds?: ReadonlySet<string>;
+  /** Highlighted because a sweep armed in this column captured the card. */
+  isSweepHighlighted?: boolean;
   projectName: string;
   menuActions?: readonly CardMenuAction[];
   /** Children that render as nested rows beneath this card, in display order. */
@@ -124,6 +126,7 @@ export function ThreadCard({
   isActive,
   isDone,
   doneIds,
+  isSweepHighlighted = false,
   projectName,
   menuActions,
   childThreads,
@@ -158,8 +161,8 @@ export function ThreadCard({
           : "ring-1 ring-transparent hover:ring-border",
         isDone && "opacity-50 saturate-50",
         dimmed && "opacity-50",
-        // The nested children render inside this wrapper so the dimming and
-        // the indent rail cover the whole family block.
+        isSweepHighlighted &&
+          "ring-2 ring-amber-500 bg-amber-500/10 saturate-100 opacity-100",
       )}
     >
       <span

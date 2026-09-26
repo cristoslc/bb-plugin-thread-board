@@ -31,6 +31,15 @@
   collapsible child rows on the card, with needs-you children promoted to
   their own column so they never hide, and family-aware filtering that
   surfaces the whole family when any member matches.
+- **Sweep** old Done threads and long-idle threads to Archive with a
+  two-click arm-then-confirm button per column: the first click arms (shows
+  `Sweep N → Archive ?`, highlights and gathers exactly the eligible
+  cards), the second click performs, and clicking away disarms. The
+  eligible set is frozen at arm time; threads that turn eligible after
+  arming wait for the next arm. Thresholds: `doneArchiveDays` (default 7
+  days past the Done mark) and `idleArchiveDays` (default 30 days idle),
+  both settable with `bb plugin config thread-board set …`. A card-menu
+  "Keep from sweep" override exempts a thread from both sweeps.
 - Cards show state, pin, pending-interaction badge, relative update time,
   title, and branch or host. Click opens the thread; modified-click opens it
   in a new window natively.
@@ -40,8 +49,9 @@
 
 The board is a nav panel at **Thread Board** in the sidebar. It reads bb's
 live thread view through the plugin SDK's sidebar hooks, so it updates in
-real time and makes no server-side writes. Hidden and archived threads are
-excluded.
+real time. It writes through bb's own stores: pin state, read state, and the
+Done marks the sweep reads — never thread content. Hidden and archived
+threads are excluded.
 
 ## Screenshots
 
@@ -91,5 +101,6 @@ bb plugin build
 bb plugin install . --yes
 bb plugin reload thread-board
 # or: bb plugin dev
+npm test           # vitest
 npx tsc --noEmit   # typecheck
 ```

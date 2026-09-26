@@ -26,11 +26,43 @@ import {
   filterFamilies,
   assembleBoard,
 } from "./components/nesting";
+import { doneAtToEpochMs } from "./lib/done-metadata";
+import {
+  DEFAULT_DONE_ARCHIVE_DAYS,
+  DEFAULT_IDLE_ARCHIVE_DAYS,
+  armSweep,
+  confirmSweep,
+  sweepCandidatesForDoneColumn,
+  sweepCandidatesForIdleColumn,
+  sweepColumnKind,
+  type ArmedSweep,
+  type DoneAgeSource,
+} from "./lib/sweep";
+import { useSweepClickAway } from "./components/board";
 import { EmptyState } from "./components/empty-state";
 
 const GROUP_BY_KEY = "thread-board:groupBy";
 const FILTER_KEY = "thread-board:filter";
 const SEARCH_KEY = "thread-board:search";
+
+/** Adapt metadata records ({doneAt: ISO, keep?}) into the sweep's extras
+ *  shape ({doneAt: epoch-ms, keep?}). */
+function recordsAsExtras(
+  records: Record<string, { doneAt?: number | string; keep?: boolean }>,
+): Record<string, { doneAt?: number; keep?: boolean }> {
+  const out: Record<string, { doneAt?: number; keep?: boolean }> = {};
+  for (const [id, record] of Object.entries(records)) {
+    out[id] = {
+      ...(typeof record.doneAt === "string"
+        ? { doneAt: doneAtToEpochMs(record.doneAt) ?? undefined }
+        : record.doneAt !== undefined
+          ? { doneAt: record.doneAt }
+          : {}),
+      ...(record.keep === true ? { keep: true } : {}),
+    };
+  }
+  return out;
+}
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -76,18 +108,61 @@ function BoardPage() {
   const sdk = useSdk();
 
   const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(new Set());
+  // Done ages + sweep overrides come from the per-thread plugin-metadata
+  // records: doneAt is the ISO stamp, keep the sweep override. The epoch
+  // adapter (lib/done-metadata) feeds the sweep's injected `now` contract.
+  const [doneExtras, setDoneExtras] = useState<Record<string, { doneAt?: number; keep?: boolean }>>({});
+  const [sweepConfig, setSweepConfig] = useState({
+    doneArchiveDays: DEFAULT_DONE_ARCHIVE_DAYS,
+    idleArchiveDays: DEFAULT_IDLE_ARCHIVE_DAYS,
+  });
   useEffect(() => {
     rpc.call("done_list").then(
-      (result) => setDoneIds(new Set(result.doneIds)),
+      (result) => {
+        setDoneIds(new Set(result.doneIds));
+        setDoneExtras(recordsAsExtras(result.records));
+      },
       () => {}, // Done marking is optional state; the board works without it.
+    );
+    rpc.call("sweep_config_get").then(
+      (result) =>
+        setSweepConfig({
+          doneArchiveDays: result.doneArchiveDays,
+          idleArchiveDays: result.idleArchiveDays,
+        }),
+      () => {}, // Settings are optional; defaults apply when unreachable.
     );
   }, [rpc]);
   useRealtime("done-changed", () => {
     rpc.call("done_list").then(
-      (result) => setDoneIds(new Set(result.doneIds)),
+      (result) => {
+        setDoneIds(new Set(result.doneIds));
+        setDoneExtras(recordsAsExtras(result.records));
+      },
+      () => {},
+    );
+    rpc.call("sweep_config_get").then(
+      (result) =>
+        setSweepConfig({
+          doneArchiveDays: result.doneArchiveDays,
+          idleArchiveDays: result.idleArchiveDays,
+        }),
       () => {},
     );
   });
+  // The board's snapshot is the DoneAgeSource implementation: stamps for
+  // Done ages, keep flags as the sweep override.
+  const doneAgeSource: DoneAgeSource = useMemo(
+    () => ({
+      doneMarkedAt: (threadId) => doneExtras[threadId]?.doneAt ?? null,
+      kept: (threadId) => doneExtras[threadId]?.keep === true,
+    }),
+    [doneExtras],
+  );
+  const idleKept = useCallback(
+    (threadId: string) => doneExtras[threadId]?.keep === true,
+    [doneExtras],
+  );
 
   // The sidebar view refreshes over its own realtime subscription, but
   // archive/unarchive changes also bump the pane's button state and the
@@ -148,6 +223,11 @@ function BoardPage() {
   }));
   const [search, setSearch] = useState<string>(() => readStored(SEARCH_KEY, [], ""));
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  // Sweep arm state: at most one armed column at a time. The candidate id
+  // list is captured at arm time and frozen — late arrivals never join.
+  const [armedSweep, setArmedSweep] = useState<ArmedSweep | null>(null);
+  const disarmSweep = useCallback(() => setArmedSweep(null), []);
+  useSweepClickAway(armedSweep !== null, disarmSweep);
   // The selected thread's column is captured when it is opened and held until
   // it is deselected, so live state/age changes cannot slide the card.
   const [frozenColumn, setFrozenColumn] = useState<{
@@ -222,6 +302,53 @@ function BoardPage() {
     [searched, groupBy, projects, providers, frozenColumns, doneIds],
   );
   const columns = assembly.columns;
+
+  // Sweep eligibility per sweepable column, computed from the current board
+  // data. Arming (in armSweepFor) captures this list at arm time; while a
+  // sweep is armed the FROZEN list is what Board displays and what confirm
+  // archives — the live recompute is only for the next arm.
+  const sweepCandidatesFor = useCallback(
+    (columnId: string): readonly string[] => {
+      const column = columns.find((candidate) => candidate.id === columnId);
+      if (column === undefined || sweepColumnKind(columnId) === null) return [];
+      const now = Date.now();
+      return sweepColumnKind(columnId) === "done"
+        ? sweepCandidatesForDoneColumn(
+            column.threads,
+            doneIds,
+            doneAgeSource,
+            { doneArchiveDays: sweepConfig.doneArchiveDays },
+            now,
+          )
+        : sweepCandidatesForIdleColumn(
+            column.threads,
+            doneIds,
+            { idleArchiveDays: sweepConfig.idleArchiveDays, kept: idleKept },
+            now,
+          );
+    },
+    [columns, doneIds, doneAgeSource, idleKept, sweepConfig],
+  );
+
+  const armSweepFor = useCallback(
+    (columnId: string) => {
+      setArmedSweep(armSweep(columnId, sweepCandidatesFor(columnId)));
+    },
+    [sweepCandidatesFor],
+  );
+
+  const confirmSweepFor = useCallback(
+    (columnId: string) => {
+      // Side effects stay out of the state updater: read the armed snapshot,
+      // clear it, then archive. React may re-invoke updaters; an archive call
+      // must never run twice.
+      const current = armedSweep;
+      if (current === null || current.columnId !== columnId) return;
+      setArmedSweep(null);
+      for (const threadId of confirmSweep(current, true)) actions.archive(threadId);
+    },
+    [actions, armedSweep],
+  );
 
   const anyFilterActive =
     filter.projects.size > 0 || filter.providers.size > 0 || filter.states.size > 0 || searchActive;
@@ -367,6 +494,11 @@ function BoardPage() {
             }
             onOpenThread={openThreadCard}
             onNewTask={() => actions.openNewThread({ focusPrompt: true })}
+            sweepCandidatesFor={sweepCandidatesFor}
+            armedSweep={armedSweep}
+            onSweepArm={armSweepFor}
+            onSweepDisarm={disarmSweep}
+            onSweepConfirm={confirmSweepFor}
             onDropDone={(threadId) => {
               const next = new Set(doneIds);
               next.add(threadId);
@@ -419,6 +551,29 @@ function BoardPage() {
                     rpc.call("done_set", { threadId: thread.id, done: !isThreadDone }).catch(
                       () => {},
                     );
+                  },
+                },
+                {
+                  id: "sweep-keep",
+                  label: doneAgeSource.kept(thread.id) ? "Allow sweep" : "Keep from sweep",
+                  icon: doneAgeSource.kept(thread.id) ? "Archive" : "Pin",
+                  run: () => {
+                    const nextKeep = !doneAgeSource.kept(thread.id);
+                    setDoneExtras((current) => ({
+                      ...current,
+                      [thread.id]: { ...current[thread.id], keep: nextKeep },
+                    }));
+                    rpc
+                      .call("sweep_keep_set", { threadId: thread.id, keep: nextKeep })
+                      .catch(() => {
+                        // Roll the optimistic update back when the server
+                        // rejects; the board must not show a keep the server
+                        // never recorded.
+                        setDoneExtras((current) => ({
+                          ...current,
+                          [thread.id]: { ...current[thread.id], keep: !nextKeep },
+                        }));
+                      });
                   },
                 },
                 {

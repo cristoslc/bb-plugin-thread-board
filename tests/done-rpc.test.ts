@@ -84,18 +84,22 @@ describe("done_list over plugin metadata", () => {
     meta.set("thr_other", { [DONE_METADATA_KEY]: { doneAt: iso } });
     expect(await callRpc("done_list", null)).toEqual({
       doneIds: ["thr_a", "thr_c"],
+      records: {
+        thr_a: { doneAt: iso },
+        thr_c: { doneAt: iso, keep: true },
+      },
     });
   });
 
   it("drops a done thread that is no longer in threads.list (archived)", async () => {
     const { callRpc, meta } = await setup({ threads: [] });
     meta.set("thr_archived", { [DONE_METADATA_KEY]: { doneAt: "2026-09-25T10:00:00.000Z" } });
-    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [], records: {} });
   });
 
   it("returns empty when nothing is done", async () => {
     const { callRpc } = await setup({ threads: ["thr_a"] });
-    expect(await callRpc("done_list", null)).toEqual({ doneIds: [] });
+    expect(await callRpc("done_list", null)).toEqual({ doneIds: [], records: {} });
   });
 
   it("fails loud on a malformed done record (never coerces)", async () => {

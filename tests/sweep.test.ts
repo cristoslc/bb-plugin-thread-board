@@ -1,0 +1,332 @@
+import { describe, expect, it } from "vitest";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import {
+  DEFAULT_DONE_ARCHIVE_DAYS,
+  DEFAULT_IDLE_ARCHIVE_DAYS,
+  armSweep,
+  confirmSweep,
+  sweepCandidatesForDoneColumn,
+  sweepCandidatesForIdleColumn,
+  sweepColumnKind,
+} from "../lib/sweep";
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+function thread(overrides: Partial<PluginSidebarThread> & { id: string }): PluginSidebarThread {
+  return {
+    projectId: "proj_a",
+    title: "Test thread",
+    titleFallback: null,
+    displayTitle: "Test thread",
+    parentThreadId: null,
+    lifecycleOwnerThreadId: null,
+    sourceThreadId: null,
+    sectionId: null,
+    originKind: null,
+    originPluginId: null,
+    providerId: "pi",
+    status: "idle",
+    runtimeStatus: "idle",
+    queuedWork: "none",
+    hasPendingInteraction: false,
+    activity: {
+      workflows: 0,
+      backgroundAgents: 0,
+      backgroundCommands: 0,
+      planMode: 0,
+      goals: 0,
+    },
+    indicator: "none",
+    indicatorLabel: null,
+    isUnread: false,
+    isPinned: false,
+    pinnedAt: null,
+    pinSortKey: null,
+    isArchived: false,
+    archivedAt: null,
+    href: "/projects/p/threads/t",
+    isHidden: false,
+    environment: null,
+    host: null,
+    createdAt: 0,
+    updatedAt: 0,
+    lastReadAt: null,
+    latestAttentionAt: 0,
+    ...overrides,
+  } as PluginSidebarThread;
+}
+
+const NOW = 100 * DAY;
+
+describe("sweepCandidatesForDoneColumn", () => {
+  it("is empty for a fresh done thread", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => NOW - HOUR, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("includes a done thread aged past the threshold", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => NOW - 8 * DAY, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("includes a thread at exactly the threshold (age >= N days)", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => NOW - 7 * DAY, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("excludes a done thread one tick under the threshold", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => NOW - 7 * DAY + 1, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("never includes a kept (overridden) thread", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" }), thread({ id: "b" })],
+      new Set(["a", "b"]),
+      {
+        doneMarkedAt: (id) => (id === "a" ? NOW - 30 * DAY : NOW - 30 * DAY),
+        kept: (id) => id === "a",
+      },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual(["b"]);
+  });
+
+  it("never includes an undated done thread (no known stamp)", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => null, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("ignores threads that are not done", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(),
+      { doneMarkedAt: () => NOW - 30 * DAY, kept: () => false },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("defaults doneArchiveDays to 7 when omitted", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "a" })],
+      new Set(["a"]),
+      { doneMarkedAt: () => NOW - 8 * DAY, kept: () => false },
+      {},
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("orders candidates newest-done first", () => {
+    const candidates = sweepCandidatesForDoneColumn(
+      [thread({ id: "old" }), thread({ id: "newer" })],
+      new Set(["old", "newer"]),
+      {
+        doneMarkedAt: (id) => (id === "old" ? NOW - 30 * DAY : NOW - 9 * DAY),
+        kept: () => false,
+      },
+      { doneArchiveDays: 7 },
+      NOW,
+    );
+    expect(candidates).toEqual(["newer", "old"]);
+  });
+});
+
+describe("sweepCandidatesForIdleColumn", () => {
+  it("includes a long-idle thread past the idle threshold", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 31 * DAY })],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("is empty for a thread under the idle threshold", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 29 * DAY })],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("includes a thread at exactly the threshold", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 30 * DAY })],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("excludes non-idle states — only quiet threads sweep", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [
+        thread({ id: "working", status: "active", updatedAt: NOW - 60 * DAY }),
+        thread({
+          id: "attention",
+          hasPendingInteraction: true,
+          updatedAt: NOW - 60 * DAY,
+        }),
+        thread({ id: "unread", isUnread: true, updatedAt: NOW - 60 * DAY }),
+      ],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("never claims a done thread — that is the Done arm's job", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 60 * DAY })],
+      new Set(["a"]),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("excludes pinned threads — pins are an explicit keep", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", isPinned: true, updatedAt: NOW - 60 * DAY })],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("excludes kept (overridden) threads", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 60 * DAY })],
+      new Set(),
+      { idleArchiveDays: 30, kept: (id) => id === "a" },
+      NOW,
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("defaults idleArchiveDays to 30 when omitted", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [thread({ id: "a", updatedAt: NOW - 31 * DAY })],
+      new Set(),
+      {},
+      NOW,
+    );
+    expect(candidates).toEqual(["a"]);
+  });
+
+  it("orders candidates newest-activity first", () => {
+    const candidates = sweepCandidatesForIdleColumn(
+      [
+        thread({ id: "older", updatedAt: NOW - 60 * DAY }),
+        thread({ id: "newer", updatedAt: NOW - 35 * DAY }),
+      ],
+      new Set(),
+      { idleArchiveDays: 30 },
+      NOW,
+    );
+    expect(candidates).toEqual(["newer", "older"]);
+  });
+});
+
+describe("arm-then-confirm semantics", () => {
+  const doneSource = {
+    doneMarkedAt: (id: string) => (id === "a" ? NOW - 30 * DAY : null),
+    kept: () => false,
+  };
+
+  it("captures a frozen list at arm time; late arrivals do not join", () => {
+    const threads = [thread({ id: "a", updatedAt: NOW - 30 * DAY })];
+    const armed = armSweep("done", sweepCandidatesForDoneColumn(threads, new Set(["a"]), doneSource, { doneArchiveDays: 7 }, NOW));
+    expect(armed.threadIds).toEqual(["a"]);
+
+    // A late arrival becomes eligible after arming.
+    const doneSourceLate = {
+      doneMarkedAt: (id: string) => (id === "a" || id === "late" ? NOW - 30 * DAY : null),
+      kept: () => false,
+    };
+    const late = [...threads, thread({ id: "late", updatedAt: NOW - 30 * DAY })];
+    const lateCandidates = sweepCandidatesForDoneColumn(late, new Set(["a", "late"]), doneSourceLate, { doneArchiveDays: 7 }, NOW);
+    expect(lateCandidates).toContain("late");
+
+    // But the armed list is frozen: it still holds only the captured card.
+    expect(armed.threadIds).toEqual(["a"]);
+  });
+
+  it("confirm returns exactly the captured list and nothing else", () => {
+    const armed = armSweep("done", ["a", "b"]);
+    const confirmed = confirmSweep(armed, true);
+    expect(confirmed).toEqual(["a", "b"]);
+  });
+
+  it("confirm from an armed idle sweep does not leak into the done list", () => {
+    const armed = armSweep("idle-awhile", ["a"]);
+    const confirmed = confirmSweep(armed, true);
+    expect(confirmed).toEqual(["a"]);
+  });
+
+  it("disarm clears the armed state; confirm after disarm archives nothing", () => {
+    const armed = armSweep("done", ["a"]);
+    const disarmed = confirmSweep(armed, false);
+    expect(disarmed).toEqual([]);
+  });
+});
+
+describe("column classification", () => {
+  it("names the sweepable columns; done vs idle-bucket; null for others", () => {
+    expect(sweepColumnKind("done")).toBe("done");
+    expect(sweepColumnKind("idle-awhile")).toBe("idle-bucket");
+    expect(sweepColumnKind("awhile")).toBe("idle-bucket");
+    expect(sweepColumnKind("working")).toBeNull();
+    expect(sweepColumnKind("idle-earlier")).toBeNull();
+    expect(sweepColumnKind("earlier")).toBeNull();
+    expect(sweepColumnKind("pinned")).toBeNull();
+  });
+});
+
+describe("threshold defaults", () => {
+  it("uses 7 days for done and 30 for idle", () => {
+    expect(DEFAULT_DONE_ARCHIVE_DAYS).toBe(7);
+    expect(DEFAULT_IDLE_ARCHIVE_DAYS).toBe(30);
+  });
+});
